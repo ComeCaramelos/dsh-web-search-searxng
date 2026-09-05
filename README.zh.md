@@ -67,8 +67,10 @@ ln -sfn /path/to/dsh-web-search-searxng \
 ## 测试
 
 ```bash
-node --test tests/provider.spec.js   # 17 个测试，零依赖（node:test）
+npm test   # = node --test tests/provider.spec.js tests/client.spec.js（35 个测试，零依赖）
 ```
+
+`tests/client.spec.js` 在模拟的客户端模块加载器中（桩化的平台模块 + 设置 scope + 凭据接口）求值 `lib/client.js`，覆盖工厂的模块边界、`apply()` 接线，以及卡片的暂存、校验、保存和凭据处理。
 
 ## 配置
 
@@ -89,6 +91,25 @@ node --test tests/provider.spec.js   # 17 个测试，零依赖（node:test）
 ```
 
 以上条目是 `web-search-searxng` 设置区块的基础层：用户层对其覆盖会作用于**下一次**搜索，因为 provider 是每次调用时投影配置段，而不是在注册时快照。`apiKey` 带 `role('secret')`，不会出现在任何层的 `describe()` 响应中。
+
+## Web UI 设置卡片
+
+本包还附带**浏览器半边**（`lib/client.js`，由 `package.json` 中的 `dsh.client` 声明）：Web UI **设置 → 插件 → 插件配置**页中的网络搜索卡片，上面的每个值都可以在卡片里编辑。
+
+卡片保留 harness 为 `web-search-deepseek` 命名空间自带的 "Web search" 卡片（`dsh-client-ui-settings-plugins`）的外观——同样的边框、同样的字段设计——只是把文案更新为它实际编辑的 SearXNG 提供方（标题 "SearXNG"，描述 "The SearXNG meta-search provider."）。为了不出现第二张重复 API 密钥 / 接口地址 / 上限字段的卡片，本包直接接管那个席位：以 priority -1 在 `web-search-deepseek` 键下注册一个空渲染的"墓碑"（键控插槽渲染优先级最低者，因此自带卡片被遮蔽），卡片本身（编辑 `web-search-searxng` 区块）注册在自身键下：
+
+| 卡片字段 | 区块键 | 行为 |
+|---|---|---|
+| API 密钥 | 凭据域 | 只写控件——密钥字面量永不进入响应；留空保持已存密钥。无密钥实例可以不填。徽章报告是否已配置密钥，并在 `credentials/reference-updated` 时重读。写入 `apiKeyEnv` 指定的凭据引用（缺省 `SEARXNG_API_KEY`）——该选项属于配置层，不是卡片字段。 |
+| 接口地址 | `baseURL` | SearXNG 基础地址；留空回退到组合层值，再到默认值。 |
+| 最多结果数 | `maxResults` | 不小于 1 的整数；非法草稿会阻止保存。 |
+| 语言 | `language` | 留空回退继承；`'all'` 表示省略该参数。 |
+
+卡片先暂存编辑，只在点击**保存**时写入：每个字段都是 `web-search-searxng` 设置命名空间上一次带修订号围栏的文档变更；用户层携带的字段显示**已覆盖**徽章（可一键恢复组合值）；Host 未接受的保存会保留草稿供你修改。改动在**下一次**搜索生效——无需重启。
+
+本包向共享的 `settings.plugin.item` 插槽注册两次：`web-search-deepseek` 键下空渲染的墓碑（保留 DeepSeek 区块的席位但不显示卡片），以及自身 `web-search-searxng` 键下的卡片本身，区块可用即渲染——因此没有 DeepSeek 提供方的部署（例如 profile 中禁用了 `web-search-deepseek` 行）仍能到达 SearXNG 设置。插件配置页按注册条目的键（∩ Host 服务的命名空间）构建单元格列表且不去重，所以墓碑必须渲染为空：若在那里放可见组件，它会按声明该键的条目数量重复出现。页面只在 Host 服务对应命名空间时才派发某个键，因此未安装本包的部署看不到任何痕迹。DeepSeek 提供方本身不受影响：仍可通过 `web.config.searchProvider` 选择，只是不再有卡片。
+
+> Host 在进程启动时扫描 `dsh.client` 声明，所以安装或升级到携带浏览器半边的版本后，需要重启一次 DSH 进程（或 GUI）。web profile 默认禁用 HMR。
 
 ## 限流说明（Docker Desktop 下的本地 Docker）
 

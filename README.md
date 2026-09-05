@@ -69,8 +69,13 @@ Restart the DSH process (or the GUI) for the patch to take effect.
 ## Tests
 
 ```bash
-node --test tests/provider.spec.js   # 17 tests, zero dependencies (node:test)
+npm test   # = node --test tests/provider.spec.js tests/client.spec.js (35 tests, zero dependencies)
 ```
+
+`tests/client.spec.js` evaluates `lib/client.js` in a simulated client module
+loader (stubbed seed modules + settings scope + credentials face) and covers
+the factory's module edges, the `apply()` wiring, and the card's staging,
+validation, saving, and credential handling.
 
 ## Config
 
@@ -92,6 +97,53 @@ node --test tests/provider.spec.js   # 17 tests, zero dependencies (node:test)
 ```
 
 The entry above is the base layer of the `web-search-searxng` Settings section: a user layer over it reaches the NEXT search, because the provider projects the section per call rather than capturing it at registration. `apiKey` carries `role('secret')`, so it never rides a `describe()` response in any layer.
+
+## Web UI settings card
+
+The package also ships a **browser half** (`lib/client.js`, declared by
+`dsh.client` in `package.json`): the Web-search card in the Web UI's
+**Settings → Plugins → Plugin configuration** tab, where every value above can
+be edited.
+
+The card keeps the look of the "Web search" card the harness ships for the
+`web-search-deepseek` namespace in `dsh-client-ui-settings-plugins` — same
+chrome, same field design — with its texts updated to name the SearXNG
+provider it edits (title "SearXNG", description "The SearXNG meta-search
+provider."). Rather than appearing as a second card next to the shipped one,
+the bundle takes over that seat: a null-rendering tombstone registered under
+the `web-search-deepseek` key at priority -1 shadows the shipped card (keyed
+slots render the lowest priority), and the card itself — which edits the
+`web-search-searxng` section — registers under its own key:
+
+| Card field | Section key | Behavior |
+|---|---|---|
+| API key | credentials domain | Write-only control — the literal never rides a response; blank keeps the stored key. A key is optional for keyless instances. The badge reports whether a key is configured, and re-reads on `credentials/reference-updated`. The write addresses the reference the section's `apiKeyEnv` names (default `SEARXNG_API_KEY`) — that option is configuration-level, not a card field. |
+| Endpoint | `baseURL` | SearXNG base URL; blank re-inherits the composed value, then the default. |
+| Max results | `maxResults` | Whole number ≥ 1; invalid drafts block the save. |
+| Language | `language` | Blank re-inherits; `'all'` omits the parameter. |
+
+The card stages edits and writes them only on **Save**: each field is a
+revision-fenced document mutation over the `web-search-searxng` settings
+namespace; an **Overridden** badge marks fields the user layer carries (with a
+reset back to the composed value); a save the Host did not accept keeps its
+drafts for correction. Changes take effect on the NEXT search — no restart.
+
+The bundle registers into the shared `settings.plugin.item` slot twice: the
+null-rendering tombstone under `web-search-deepseek` (which keeps the DeepSeek
+section's seat but shows no card), and the card itself under its own
+`web-search-searxng` key, rendered whenever the section is available — so a
+deployment without the DeepSeek provider (e.g. with the `web-search-deepseek`
+row disabled in its profile) still reaches the SearXNG settings. The tab
+builds its cell list from the registered entry keys it serves, so the tombstone
+must render nothing: a visible component there would appear a second time,
+once per entry claiming the key. The tab dispatches a key only when the Host
+serves its namespace, so a deployment without this plugin shows no trace of
+the card either way. The DeepSeek provider itself stays untouched: it is still
+selectable through `web.config.searchProvider`, it just has no card anymore.
+
+> The Host scans `dsh.client` declarations when the process starts, so after
+> installing or upgrading to a version that carries the browser half, restart
+> the DSH process (or the GUI) once. Web profiles disable HMR by design.
 
 ## Rate-limit note (local Docker behind Docker Desktop)
 

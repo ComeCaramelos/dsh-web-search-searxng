@@ -1,7 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-web-search-searxng",
   "description": "SearXNG-backed search provider (local meta-search JSON API) for the DeepSeek Harness web capability seam (ctx.web)",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "publishConfig": {
     "access": "public"
   },
@@ -17,12 +17,17 @@
       "types": "./lib/types/provider.d.ts",
       "default": "./lib/provider.js"
     },
+    "./client": {
+      "types": "./lib/types/client.d.ts",
+      "default": "./lib/client.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
     "lib/provider.js",
+    "lib/client.js",
     "lib/types/**/*.d.ts",
     "cordis.patch.yml",
     "README.md",
@@ -30,7 +35,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/provider.spec.js"
+    "test": "node --test tests/provider.spec.js tests/client.spec.js"
   },
   "keywords": [
     "deepseek-harness",
@@ -47,13 +52,13 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-launch-environment": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-web": "^0.1.0-rc.6",
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-launch-environment": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-web": "^0.1.2-rc.1",
+    "@deepseek-ai/cordis": "^4.0.2"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
@@ -61,6 +66,14 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   }
 }

@@ -6,9 +6,14 @@
 # Configuration is environment-first: set $SEARXNG_BASE_URL / $SEARXNG_MAX_RESULTS
 # / $SEARXNG_LANGUAGE in your shell or an .env before launching `dsh`, and no
 # YAML editing is required. The values below are fallbacks when unset.
+#
+# A patch row REPLACES the targeted row's whole `config`, so this row restates
+# every key the base `web` row owns (fetchProvider: http) alongside the
+# search-provider switch.
 - id: web
   config:
     searchProvider: searxng-local
+    fetchProvider: http
 
 - insert:
     - id: web-search-searxng
