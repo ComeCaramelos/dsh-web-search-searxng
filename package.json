@@ -1,36 +1,46 @@
 {
-  "name": "@deepseek-ai/dsh-web-search-searxng",
+  "name": "@comecaramelos/dsh-web-search-searxng",
   "description": "SearXNG-backed search provider (local meta-search JSON API) for the DeepSeek Harness web capability seam (ctx.web)",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "publishConfig": {
     "access": "public"
   },
   "type": "module",
   "main": "lib/index.js",
-  "types": "lib/types/index.d.ts",
+  "types": "lib/index.d.ts",
   "exports": {
     ".": {
-      "types": "./lib/types/index.d.ts",
+      "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
     "./provider": {
-      "types": "./lib/types/provider.d.ts",
+      "types": "./lib/provider.d.ts",
       "default": "./lib/provider.js"
+    },
+    "./client": {
+      "types": "./types/client.d.ts",
+      "default": "./lib/client.js"
     },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
   "files": [
-    "lib/index.js",
-    "lib/provider.js",
-    "lib/types/**/*.d.ts",
+    "lib",
+    "types",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test tests/provider.spec.js"
+    "build": "npm run build:host && npm run build:client",
+    "build:host": "tsc",
+    "build:client": "tsc -p src/client/tsconfig.json && node scripts/build-client.mjs",
+    "clean": "rm -rf lib",
+    "dev": "tsc --watch",
+    "prepack": "npm run build",
+    "pretest": "npm run build",
+    "test": "node --test test/*.test.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -47,20 +57,38 @@
   },
   "license": "MIT",
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-launch-environment": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-session": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-settings": "^0.1.0-rc.6",
-    "@deepseek-ai/dsh-web": "^0.1.0-rc.6",
-    "@deepseek-ai/cordis": "^4.0.1"
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-launch-environment": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
+    "@deepseek-ai/dsh-web": "^0.1.2-rc.1"
   },
   "dependencies": {
     "@deepseek-ai/schemastery": "^3.18.1"
   },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/react": "^18.3.31",
+    "esbuild": "^0.25.12",
+    "postcss": "^8.5.29",
+    "typescript": "^5.9.3"
+  },
+  "allowScripts": {
+    "esbuild": true
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-api-remotes"
+      ]
     }
   }
 }

@@ -1,0 +1,25 @@
+# Line endings
+#
+# Both halves of this plugin are read as source — Node for the host half, the
+# browser bundle for the client half — and `.editorconfig` already pins
+# `end_of_line = lf`. Nothing here is meant to be platform-dependent: every
+# tracked file is stored *and* checked out as LF, so the working tree stays
+# byte-stable regardless of who cloned it, and a stray CRLF cannot silently
+# reappear through a checkout.
+* text=auto eol=lf
+
+# Sources and metadata: stated explicitly on top of the blanket rule, so a file
+# added later can never be classified by content sniffing alone.
+*.ts   text eol=lf
+*.d.ts text eol=lf
+*.mjs  text eol=lf
+*.cjs  text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+
+# Repository metadata.
+.gitattributes text eol=lf
+.editorconfig  text eol=lf
+.gitignore     text eol=lf

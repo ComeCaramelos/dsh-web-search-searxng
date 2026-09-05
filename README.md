@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-web-search-searxng
+# @comecaramelos/dsh-web-search-searxng
 
 English | [中文](README.zh.md)
 
@@ -18,16 +18,44 @@ This is an **implementation** package: it registers a provider into `ctx.web`, r
 - A running SearXNG instance reachable from the DSH host (default `http://localhost:8080`).
 - DeepSeek Harness profile with the `web` seam mounted (every standard profile ships it).
 
+## Layout
+
+TypeScript sources under `src/`, emitted JavaScript under `lib/` (generated —
+never hand-edit). The package is the usual two-halves DSH plugin:
+
+```
+src/index.ts             host surface: identity, config, apply, the provider
+src/provider.ts          the provider alone, for reuse without a plugin row
+src/host/apply.ts        the wiring: settings section + provider registration
+src/host/settings.ts     the namespace install and the live config source
+src/host/values.ts       option resolution: settings → environment → constants
+src/host/credentials.ts  the per-search API-key resolution
+src/host/recorder.ts     the secret-free session event per request
+src/host/request.ts      the URL and headers one search dispatches with
+src/host/provider.ts     the provider class
+src/host/mapping.ts      SearXNG response → normalized sources
+src/host/abort.ts        cancellation, normalized to WEB_ABORTED
+src/host/constants.ts    fixed identifiers, defaults, header constants
+src/host/schema.ts       the row config schema
+src/client/**            the browser half, bundled into the one lib/client.js
+```
+
+The browser half compiles separately and is bundled by
+`scripts/build-client.mjs` (esbuild) into `lib/client.js`: the shell fetches
+exactly one script per plugin, so the source modules exist for readability, not
+for the runtime graph.
+
 ## Install
 
 ### One-command install (bundle)
 
 The package ships a `dsh.bundle.patch` declaration (`cordis.patch.yml`), so a
 single `dsh plugin add` registers the plugin **and** switches the web seam to
-it — no YAML editing:
+it — no YAML editing. Link local sources only in the `plugin-dev` profile;
+the live `web` profile consumes the bundled/npm version instead:
 
 ```bash
-dsh plugin --profile web add /path/to/dsh-web-search-searxng
+dsh plugin --profile plugin-dev add link:/home/roberto/dev/dsh/dsh-web-search-searxng
 ```
 
 Configuration is environment-first — set these before launching `dsh` and no
@@ -42,17 +70,20 @@ export SEARXNG_LANGUAGE=en                       # optional; 'all' (no param) by
 ### Manual install (local development)
 
 ```bash
-# 1. Make the package resolvable from the profile's node_modules
-ln -sfn /path/to/dsh-web-search-searxng \
-        "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-web-search-searxng"
+# 1. Build the sources: `src/**` is TypeScript, `lib/**` is what the harness loads.
+npm ci && npm run build
 
-# 2. Register the plugin and switch the search provider in cordis.patch.yml:
+# 2. Make the package resolvable from the profile's node_modules
+ln -sfn /path/to/dsh-web-search-searxng \
+        "$DSH_HOME/profiles/node_modules/@comecaramelos/dsh-web-search-searxng"
+
+# 3. Register the plugin and switch the search provider in cordis.patch.yml:
 ```
 
 ```yaml
 - insert:
     - id: web-search-searxng
-      name: '@deepseek-ai/dsh-web-search-searxng'
+      name: '@comecaramelos/dsh-web-search-searxng'
       config:
         baseURL: http://localhost:8080
         maxResults: 10
@@ -69,8 +100,22 @@ Restart the DSH process (or the GUI) for the patch to take effect.
 ## Tests
 
 ```bash
-node --test tests/provider.spec.js   # 17 tests, zero dependencies (node:test)
+npm test   # builds, then node --test test/*.test.mjs (62 tests, zero test-only dependencies)
 ```
+
+The build has two halves: `tsc` compiles `src/host/**` into `lib/`, and
+`tsc -p src/client/tsconfig.json` typechecks `src/client/**` before
+`scripts/build-client.mjs` bundles that half with esbuild into the one
+classic-script `lib/client.js` the shell fetches. `lib/` is generated output —
+never hand-edit it.
+
+`test/provider.test.mjs` drives the provider through the public `./provider`
+surface with `globalThis.fetch` stubbed. `test/client.test.mjs` evaluates
+`lib/client.js` in a simulated client module loader (stubbed seed modules +
+settings scope + credentials face) and covers the factory's module edges, the
+`apply()` wiring, and the card's staging, validation, saving, and credential
+handling. `test/wiring.test.mjs` covers the host `apply()`, the settings
+projection, and the option-precedence chain.
 
 ## Config
 
@@ -84,7 +129,7 @@ node --test tests/provider.spec.js   # 17 tests, zero dependencies (node:test)
 
 ```yaml
 - id: web-search-searxng
-  name: '@deepseek-ai/dsh-web-search-searxng'
+  name: '@comecaramelos/dsh-web-search-searxng'
   config:
     baseURL: http://localhost:8080
     maxResults: 10
@@ -92,6 +137,59 @@ node --test tests/provider.spec.js   # 17 tests, zero dependencies (node:test)
 ```
 
 The entry above is the base layer of the `web-search-searxng` Settings section: a user layer over it reaches the NEXT search, because the provider projects the section per call rather than capturing it at registration. `apiKey` carries `role('secret')`, so it never rides a `describe()` response in any layer.
+
+## Web UI settings card
+
+The package also ships a **browser half** (`lib/client.js`, declared by
+`dsh.client` in `package.json`): the Web-search card in the Web UI's
+**Settings → Plugins → Plugin configuration** tab, where every value above can
+be edited.
+
+The card keeps the shape of the "Web search" card the harness ships for the
+`web-search-deepseek` namespace in `dsh-client-ui-settings-plugins` — a
+disclosure header over one credential field, three value fields and a
+Save/Discard footer — with its texts updated to name the SearXNG provider it
+edits (title "SearXNG", description "The SearXNG meta-search provider."). The
+sheet (`src/client/styles/SearxngCard.module.css`) carries the modern card
+component set the sibling plugins' cards carry — the hairline 16px shell, the
+two-row `.field` (title and controls inline, copy full-width below), the filled
+32px input and the outline buttons, with the state pills and the staged-save
+footer declared as the card's own extension block. Rather than appearing as a
+second card next to the shipped one,
+the bundle takes over that seat: a null-rendering tombstone registered under
+the `web-search-deepseek` key at priority -1 shadows the shipped card (keyed
+slots render the lowest priority), and the card itself — which edits the
+`web-search-searxng` section — registers under its own key:
+
+| Card field | Section key | Behavior |
+|---|---|---|
+| API key | credentials domain | Write-only control — the literal never rides a response; blank keeps the stored key. A key is optional for keyless instances. The badge reports whether a key is configured, and re-reads on `credentials/reference-updated`. The write addresses the reference the section's `apiKeyEnv` names (default `SEARXNG_API_KEY`) — that option is configuration-level, not a card field. |
+| Endpoint | `baseURL` | SearXNG base URL; blank re-inherits the composed value, then the default. |
+| Max results | `maxResults` | Whole number ≥ 1; invalid drafts block the save. |
+| Language | `language` | Blank re-inherits; `'all'` omits the parameter. |
+
+The card stages edits and writes them only on **Save**: each field is a
+revision-fenced document mutation over the `web-search-searxng` settings
+namespace; an **Overridden** badge marks fields the user layer carries (with a
+reset back to the composed value); a save the Host did not accept keeps its
+drafts for correction. Changes take effect on the NEXT search — no restart.
+
+The bundle registers into the shared `settings.plugin.item` slot twice: the
+null-rendering tombstone under `web-search-deepseek` (which keeps the DeepSeek
+section's seat but shows no card), and the card itself under its own
+`web-search-searxng` key, rendered whenever the section is available — so a
+deployment without the DeepSeek provider (e.g. with the `web-search-deepseek`
+row disabled in its profile) still reaches the SearXNG settings. The tab
+builds its cell list from the registered entry keys it serves, so the tombstone
+must render nothing: a visible component there would appear a second time,
+once per entry claiming the key. The tab dispatches a key only when the Host
+serves its namespace, so a deployment without this plugin shows no trace of
+the card either way. The DeepSeek provider itself stays untouched: it is still
+selectable through `web.config.searchProvider`, it just has no card anymore.
+
+> The Host scans `dsh.client` declarations when the process starts, so after
+> installing or upgrading to a version that carries the browser half, restart
+> the DSH process (or the GUI) once. Web profiles disable HMR by design.
 
 ## Rate-limit note (local Docker behind Docker Desktop)
 

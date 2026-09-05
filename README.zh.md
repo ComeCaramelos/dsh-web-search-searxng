@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-web-search-searxng
+# @comecaramelos/dsh-web-search-searxng
 
 [English](README.md) | 中文
 
@@ -17,6 +17,32 @@
 
 - 一个 DSH 主机可达的 SearXNG 实例（默认 `http://localhost:8080`）。
 - 挂载了 `web` seam 的 DeepSeek Harness profile（所有标准 profile 都自带）。
+
+## 目录结构
+
+源码为 TypeScript，位于 `src/`；`lib/` 是编译产物（不要手工修改）。这是 DSH
+插件常见的两半结构：
+
+```
+src/index.ts             host 表面：标识、配置、apply、provider
+src/provider.ts          单独的 provider，便于脱离插件行复用
+src/host/apply.ts        接线：设置 section + provider 注册
+src/host/settings.ts     命名空间安装与实时配置源
+src/host/values.ts       选项解析：设置 → 环境变量 → 常量
+src/host/credentials.ts  每次搜索的 API key 解析
+src/host/recorder.ts     每次请求的会话事件（不含密钥）
+src/host/request.ts      一次搜索发出的 URL 与请求头
+src/host/provider.ts     provider 类
+src/host/mapping.ts      SearXNG 响应 → 标准化的 sources
+src/host/abort.ts        取消，统一收敛为 WEB_ABORTED
+src/host/constants.ts    固定标识、默认值、请求头常量
+src/host/schema.ts       行配置 schema
+src/client/**            浏览器半，打包为单个 lib/client.js
+```
+
+浏览器半单独编译，并由 `scripts/build-client.mjs`（esbuild）打包成
+`lib/client.js`：shell 每个插件只取一个脚本，源码里的模块只为可读性存在，
+并不构成运行时的模块图。
 
 ## 安装
 
@@ -40,17 +66,20 @@ export SEARXNG_LANGUAGE=en                       # 可选；默认 'all'（不�
 ### 手动安装（本地开发）
 
 ```bash
-# 1. 让包能从 profile 的 node_modules 解析
-ln -sfn /path/to/dsh-web-search-searxng \
-        "$DSH_HOME/profiles/node_modules/@deepseek-ai/dsh-web-search-searxng"
+# 1. 编译源码：`src/**` 是 TypeScript，harness 实际加载的是 `lib/**`
+npm ci && npm run build
 
-# 2. 在 cordis.patch.yml 中注册插件并切换搜索 provider（见下方配置）
+# 2. 让包能从 profile 的 node_modules 解析
+ln -sfn /path/to/dsh-web-search-searxng \
+        "$DSH_HOME/profiles/node_modules/@comecaramelos/dsh-web-search-searxng"
+
+# 3. 在 cordis.patch.yml 中注册插件并切换搜索 provider（见下方配置）
 ```
 
 ```yaml
 - insert:
     - id: web-search-searxng
-      name: '@deepseek-ai/dsh-web-search-searxng'
+      name: '@comecaramelos/dsh-web-search-searxng'
       config:
         baseURL: http://localhost:8080
         maxResults: 10
@@ -67,8 +96,12 @@ ln -sfn /path/to/dsh-web-search-searxng \
 ## 测试
 
 ```bash
-node --test tests/provider.spec.js   # 17 个测试，零依赖（node:test）
+npm test   # 先构建，再 node --test test/*.test.mjs（62 个测试，测试本身零依赖）
 ```
+
+构建分两半：`tsc` 把 `src/host/**` 编译到 `lib/`；`tsc -p src/client/tsconfig.json` 只做类型检查，再由 `scripts/build-client.mjs` 用 esbuild 把浏览器半打包成 shell 取用的单个 classic-script `lib/client.js`。`lib/` 是生成产物——不要手工修改。
+
+`test/provider.test.mjs` 通过公开的 `./provider` 表面驱动 provider（桩掉 `globalThis.fetch`）；`test/client.test.mjs` 在模拟的客户端模块加载器中（桩化的平台模块 + 设置 scope + 凭据接口）求值 `lib/client.js`，覆盖工厂的模块边界、`apply()` 接线，以及卡片的暂存、校验、保存和凭据处理；`test/wiring.test.mjs` 覆盖 host 侧 `apply()`、设置投影和选项优先级链。
 
 ## 配置
 
@@ -82,13 +115,32 @@ node --test tests/provider.spec.js   # 17 个测试，零依赖（node:test）
 
 ```yaml
 - id: web-search-searxng
-  name: '@deepseek-ai/dsh-web-search-searxng'
+  name: '@comecaramelos/dsh-web-search-searxng'
   config:
     baseURL: http://localhost:8080
     maxResults: 10
 ```
 
 以上条目是 `web-search-searxng` 设置区块的基础层：用户层对其覆盖会作用于**下一次**搜索，因为 provider 是每次调用时投影配置段，而不是在注册时快照。`apiKey` 带 `role('secret')`，不会出现在任何层的 `describe()` 响应中。
+
+## Web UI 设置卡片
+
+本包还附带**浏览器半边**（`lib/client.js`，由 `package.json` 中的 `dsh.client` 声明）：Web UI **设置 → 插件 → 插件配置**页中的网络搜索卡片，上面的每个值都可以在卡片里编辑。
+
+卡片保留 harness 为 `web-search-deepseek` 命名空间自带的 "Web search" 卡片（`dsh-client-ui-settings-plugins`）的形态——同样的折叠头部、同样的凭据字段加三个取值字段、同样的 Save/Discard 页脚——只是把文案更新为它实际编辑的 SearXNG 提供方（标题 "SearXNG"，描述 "The SearXNG meta-search provider."）。样式表（`src/client/styles/SearxngCard.module.css`）采用同级插件卡片共用的现代卡片组件集——0.5px 细边 16px 外壳、两行式 `.field`（标题与控件同行在上、说明文字整行在下）、填充式 32px 输入框与描边按钮——并把状态徽标与"暂存保存"页脚写成卡片自己的扩展区块。为了不出现第二张重复 API 密钥 / 接口地址 / 上限字段的卡片，本包直接接管那个席位：以 priority -1 在 `web-search-deepseek` 键下注册一个空渲染的"墓碑"（键控插槽渲染优先级最低者，因此自带卡片被遮蔽），卡片本身（编辑 `web-search-searxng` 区块）注册在自身键下：
+
+| 卡片字段 | 区块键 | 行为 |
+|---|---|---|
+| API 密钥 | 凭据域 | 只写控件——密钥字面量永不进入响应；留空保持已存密钥。无密钥实例可以不填。徽章报告是否已配置密钥，并在 `credentials/reference-updated` 时重读。写入 `apiKeyEnv` 指定的凭据引用（缺省 `SEARXNG_API_KEY`）——该选项属于配置层，不是卡片字段。 |
+| 接口地址 | `baseURL` | SearXNG 基础地址；留空回退到组合层值，再到默认值。 |
+| 最多结果数 | `maxResults` | 不小于 1 的整数；非法草稿会阻止保存。 |
+| 语言 | `language` | 留空回退继承；`'all'` 表示省略该参数。 |
+
+卡片先暂存编辑，只在点击**保存**时写入：每个字段都是 `web-search-searxng` 设置命名空间上一次带修订号围栏的文档变更；用户层携带的字段显示**已覆盖**徽章（可一键恢复组合值）；Host 未接受的保存会保留草稿供你修改。改动在**下一次**搜索生效——无需重启。
+
+本包向共享的 `settings.plugin.item` 插槽注册两次：`web-search-deepseek` 键下空渲染的墓碑（保留 DeepSeek 区块的席位但不显示卡片），以及自身 `web-search-searxng` 键下的卡片本身，区块可用即渲染——因此没有 DeepSeek 提供方的部署（例如 profile 中禁用了 `web-search-deepseek` 行）仍能到达 SearXNG 设置。插件配置页按注册条目的键（∩ Host 服务的命名空间）构建单元格列表且不去重，所以墓碑必须渲染为空：若在那里放可见组件，它会按声明该键的条目数量重复出现。页面只在 Host 服务对应命名空间时才派发某个键，因此未安装本包的部署看不到任何痕迹。DeepSeek 提供方本身不受影响：仍可通过 `web.config.searchProvider` 选择，只是不再有卡片。
+
+> Host 在进程启动时扫描 `dsh.client` 声明，所以安装或升级到携带浏览器半边的版本后，需要重启一次 DSH 进程（或 GUI）。web profile 默认禁用 HMR。
 
 ## 限流说明（Docker Desktop 下的本地 Docker）
 

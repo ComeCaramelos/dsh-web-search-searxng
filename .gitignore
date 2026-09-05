@@ -1,3 +1,33 @@
-# Local dev convenience symlink into the DSH profile dependency tree.
-# Not part of the published package (files: lib/** in package.json).
+# Dependencies
+# (The tree may be a symlink into the DSH profile dependency store.)
 node_modules/
+
+# Build output (generated from src/**/*.ts by `npm run build`; never hand-edit)
+lib/
+
+# npm
+*.tgz
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+
+# Editor
+.idea/
+.vscode/
+!.vscode/settings.json
+*.swp
+*~
+
+# Env
+.env
+.env.*
+!.env.example
+
+# workspace-local npm cache (kept out of git)
+.npm-cache/

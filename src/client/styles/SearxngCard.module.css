@@ -1,0 +1,345 @@
+/*
+ * The card's stylesheet — authored as a CSS Module, the same form every shipped
+ * `dsh-client-ui-*` half carries. The build step (scripts/build-client.mjs)
+ * parses it with postcss — a syntax error fails `build:client` at the exact
+ * line — minifies it through esbuild's CSS pipeline, and scopes every class
+ * name to `<hash>_<local>`; the card imports that map (default export) keyed by
+ * the local names below.
+ *
+ * All colors and surfaces come from the shell's design aliases, so the card
+ * re-themes with the GUI instead of shipping a palette of its own.
+ *
+ * The shared half of this sheet is kept **byte-for-byte identical to the sibling
+ * cards'** — `dsh-docker-desktop-mcp`'s `DockerMcpCard.module.css`,
+ * `dsh-chrome-mcp`'s `ChromeMcpCard.module.css`, and the block layout
+ * `dsh-hover-information` spells out in `styles/card.ts` when it styles its own
+ * sheet inline: the card shell, the disclosure header and its title row, the
+ * one-column body whose own rule IS the separator, the two-row field and its
+ * copy lines all carry the same rules in the same order, so this card reads as
+ * part of one component set instead of an older card that never caught up. The
+ * second block carries what belongs to this plugin — the `unsaved` pill, the
+ * "Reset to default" action, the field state pills, the save-error line and the
+ * Save/Discard footer the staged form needs. Those rules are new only by name:
+ * each one is a rule the references already carry under their own name (the pill
+ * inside `dsh-hover-information`'s `nameRow`, the `linkButton` every card uses
+ * for a bare action, the `catalogInput` row box, the `dialogButton` /
+ * `dialogButtonPrimary` pair of a confirm footer), so a restyle lands on this
+ * card from the same sheet and nothing here needs its own opinion about the
+ * design system.
+ */
+
+/* ── shared with the sibling cards ──────────────────────────────────────── */
+
+.card {
+    border: 0.5px solid var(--dsw-alias-border-l4);
+    background: var(--dsw-alias-bg-layer-3);
+    border-radius: 16px;
+    list-style: none;
+    transition: border-color 0.16s, background 0.16s;
+}
+
+.card:hover {
+    border-color: var(--dsw-alias-label-dimmed);
+}
+
+.cardOpen {
+    background: var(--dsw-alias-bg-layer-2);
+    border-color: var(--dsw-alias-label-dimmed);
+}
+
+.header {
+    appearance: none;
+    width: 100%;
+    font: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    background: 0 0;
+    border: 0;
+    border-radius: 12px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    display: flex;
+}
+
+.header:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary);
+    outline-offset: -2px;
+}
+
+.headText {
+    flex-direction: column;
+    flex: 1;
+    gap: 4px;
+    min-width: 0;
+    display: flex;
+}
+
+/* First line: the title, with the card's own state pill riding next to it. */
+.nameRow {
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    display: flex;
+}
+
+.name {
+    color: var(--dsw-alias-label-primary);
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.desc {
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.chevron {
+    color: var(--dsw-alias-label-tertiary);
+    flex: none;
+    transition: transform 0.16s;
+}
+
+.chevronOpen {
+    transform: rotate(180deg);
+}
+
+/* One column of fields, spaced by the gap. The body's own top rule IS the
+ * separator, so no field ever draws a second hairline between itself and its
+ * neighbour — the same seam rule every sibling card follows. */
+.body {
+    border-top: 0.5px solid var(--dsw-alias-border-l2);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 16px;
+    padding: 12px 0;
+}
+
+/* Two-row field: title + controls inline above, description full-width below.
+ * Shared across all catalog sections (pickers + toggles) for a uniform layout. */
+.field {
+    align-items: flex-start;
+    gap: 4px;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.fieldRow {
+    align-items: center;
+    gap: 8px;
+    display: flex;
+    width: 100%;
+}
+
+.fieldTitle {
+    color: var(--dsw-alias-label-primary);
+    font-size: 14px;
+    font-weight: 400;
+    line-height: 22px;
+    flex: 1;
+    min-width: 0;
+}
+
+.fieldDesc {
+    color: var(--dsw-alias-label-tertiary);
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 18px;
+    width: 100%;
+}
+
+.readOnly {
+    color: var(--dsw-alias-label-tertiary);
+    margin: 0;
+    font-size: 12px;
+}
+
+.error {
+    color: var(--dsw-alias-state-error-primary);
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+/* ── this plugin's own parts, drawn from the same primitives ────────────── */
+
+/* The card's own state, drawn in the title row: a form with edits no save has
+ * written back. It takes the pill `dsh-hover-information` carries inside its
+ * `nameRow` (an outlined caption pill, not the older filled one), so the header
+ * reads as a title plus one state mark — the shape every card carries. */
+.badge {
+    white-space: nowrap;
+    color: var(--dsw-alias-label-secondary);
+    border: 0.5px solid var(--dsw-alias-border-l4);
+    border-radius: 999px;
+    flex: none;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 17px;
+}
+
+/* The field's state line: `configured` / `overridden` and the muted partner a
+ * field shows when there is nothing to report. */
+.badges {
+    align-items: center;
+    gap: 8px;
+    flex: none;
+    display: inline-flex;
+}
+
+.badgeMuted {
+    white-space: nowrap;
+    color: var(--dsw-alias-label-tertiary);
+    border-radius: 999px;
+    flex: none;
+    padding: 1px 8px;
+    font-size: 11px;
+    line-height: 17px;
+}
+
+/* The reference `linkButton` shape (the stock Button's text variant): a field's
+ * "Reset to default" action sits in the field's inline row, after the state
+ * pill, and only shows its face on hover. */
+.reset {
+    box-sizing: border-box;
+    border: none;
+    background: 0 0;
+    color: var(--dsw-alias-label-tertiary);
+    cursor: pointer;
+    border-radius: 14px;
+    align-items: center;
+    height: 28px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 12px;
+    line-height: 18px;
+    display: inline-flex;
+}
+
+.reset:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+    color: var(--dsw-alias-label-secondary);
+}
+
+.reset:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.reset:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary);
+    outline-offset: 1px;
+}
+
+/* The value control gets a line of its own between the row and the copy: these
+ * values (a URL, a language tag) read badly truncated inside the row. Same box
+ * the references give their own row inputs — the `catalogInput` filled 32px
+ * box, not the older 34px outlined one. */
+.input {
+    box-sizing: border-box;
+    border: 0.5px solid var(--dsw-alias-border-l4);
+    background: var(--dsw-alias-bg-layer-1);
+    color: var(--dsw-alias-label-primary);
+    border-radius: 8px;
+    height: 32px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 14px;
+    line-height: 22px;
+    min-width: 0;
+    width: 100%;
+}
+
+.input::placeholder {
+    color: var(--dsw-alias-label-dimmed);
+}
+
+.input:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary);
+    outline-offset: -1px;
+}
+
+.input:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Applied together with `.input`. */
+.inputInvalid {
+    border-color: var(--dsw-alias-label-error);
+}
+
+/* The copy line's invalid voice — applied together with `.fieldDesc`, which the
+ * reference keeps as the one copy line and simply recolors. Declared after
+ * `.fieldDesc` so the equal-specificity cascade resolves to the error colour. */
+.fieldDescInvalid {
+    color: var(--dsw-alias-state-error-primary);
+}
+
+/* A form that stages its edits needs a footer: its own hairline (the body's
+ * rule only caps the block's top) and the two actions. */
+.footer {
+    border-top: 0.5px solid var(--dsw-alias-border-l2);
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding-top: 12px;
+    display: flex;
+    width: 100%;
+}
+
+/* The reason a save was refused: the reference's `.error` line, laid out to take
+ * the width the buttons do not need — composed with `.error`, not redrawn. */
+.failed {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The stock Button's outline + md shape, byte-for-byte the rule the reference
+ * cards' confirm footers carry as `.dialogButton` — the shape a staged save
+ * needs. The reference's own `.button` is the same primitive's `sm` variant
+ * (28px/12px), sized for an action inside a row rather than for a card's
+ * primary action, so this rule wears our own name and not theirs. */
+.footerButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 0.5px solid var(--dsw-alias-border-l3);
+    border-radius: 16px;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--dsw-alias-label-primary);
+    background: transparent;
+    padding: 0 12px;
+    height: 32px;
+}
+
+.footerButton:hover:not(:disabled) {
+    background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.footerButton:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+}
+
+.footerButton:focus-visible {
+    outline: 2px solid var(--dsw-alias-brand-primary);
+    outline-offset: 1px;
+}
+
+/* The primary action stays an outline button and carries its rank through the
+ * weight rather than a fill — byte-for-byte the rule the references' confirm
+ * footers compose as `.dialogButtonPrimary`, applied together with
+ * `.footerButton` the same way they compose the pair. */
+.footerButtonPrimary {
+    color: var(--dsw-alias-label-primary);
+    font-weight: 600;
+}
