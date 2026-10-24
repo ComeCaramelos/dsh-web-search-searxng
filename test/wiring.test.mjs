@@ -1,71 +1,103 @@
 /**
- * Behavior spec for the host wiring: the plugin face, the settings projection,
- * and the option resolution that every search runs on.
+ * Behavior spec for the host wiring: the plugin face, the configuration-form
+ * surface, the live config source, and the option resolution that every search
+ * runs on.
  *
  * Nothing here drives a network: the provider is handed a source and the
  * resolution is read back through the seams it consults, so the precedence chain
- * — settings section → launch environment → constant — is observable without a
- * SearXNG instance behind it.
+ * — configuration form → launch environment → constant — is observable without
+ * a SearXNG instance behind it.
+ *
+ * The form surface is pinned from the *compiled* `Config` rather than from the
+ * source, because the failure it guards against is invisible in the source: a
+ * field the row page edits is reachable only when it is declared `.volatile()`.
+ * An entry declaring no volatile field answers no form at all, and a write naming
+ * a non-volatile field is refused Host-side — either one looks like a dead page.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+    CONFIG_FIELDS,
     Config,
+    ENTRY_ID,
     SEARXNG_DEFAULT_BASE_URL,
     SEARXNG_DEFAULT_MAX_RESULTS,
     SEARXNG_PROVIDER_ID,
-    SETTINGS_NAMESPACE,
     apply,
+    configSource,
     inject,
     name,
     resolveOptions
 } from "../lib/index.js";
 
+/** A live reference the way a `.volatile()` field arrives: `get()` answers now. */
+function live(value) {
+    const ref = { value, get: () => ref.value };
+    return ref;
+}
+
 /**
  * A fake plugin context: the seams `apply` and the resolvers reach for.
  *
- * `inject(["settings"], …)` stands in for the optional settings dependency: it
- * hands the callback a context carrying a settings service that records what was
- * installed and attaches the entry config as the source, the way the real service
- * does, and keeps the hooks on itself so a test can flip the source from
- * underneath. `web` records the registration; `services` answers `ctx.get`.
+ * `fiber.entry.options.id` is the profile entry id the form is keyed by;
+ * `inject(["settings"], …)` stands in for the optional settings dependency and
+ * hands the callback a settings service that records each `configure` call (the
+ * auto page the card keeps off); `effect` runs its setup at once and keeps the
+ * disposer; `web` records the registration; `services` answers `ctx.get`.
  */
-function fakeContext(services = {}) {
+function fakeContext(services = {}, { entryId = ENTRY_ID, settings = true } = {}) {
     const registrations = [];
-    const sections = [];
-    const hooks = { setSource: () => {}, onChange: () => {} };
-    let settingsMounted = true;
+    const configured = [];
+    const disposers = [];
+    const errors = [];
+    const fiber = { entry: { options: entryId === null ? {} : { id: entryId } } };
+    const service = {
+        configure(presentation, owner) {
+            configured.push({ presentation, owner });
+            return () => configured.splice(configured.findIndex((entry) => entry.owner === owner), 1);
+        },
+        describe: () => [],
+        mutate: async () => {}
+    };
     const ctx = {
+        fiber,
         web: {
             registerSearchProvider(provider) {
                 registrations.push(provider);
                 return () => registrations.splice(registrations.indexOf(provider), 1);
             }
         },
-        inject: (deps, callback) => {
-            if (!deps.includes("settings") || !settingsMounted) return;
-            callback({
-                settings: {
-                    installSection: (owner, ns, schema, entry, received) => {
-                        sections.push({ owner, ns, schema, entry, received });
-                        Object.assign(hooks, received);
-                        hooks.setSource(() => entry);
-                        hooks.onChange();
-                    }
-                }
-            });
+        effect(setup) {
+            const dispose = setup();
+            if (typeof dispose === "function") disposers.push(dispose);
         },
+        inject(deps, callback) {
+            if (!deps.includes("settings") || !settings) return;
+            callback({ settings: service });
+        },
+        on() {
+            return () => {};
+        },
+        logger: { error: (...args) => errors.push(args.join(" ")), warn: () => {} },
         get(name, strict) {
             const found = services[name];
             if (found === undefined && strict) throw new Error(`no service ${name}`);
             return found;
-        },
-        /** Call before `apply` to model a composition without a settings provider. */
-        withoutSettings() {
-            settingsMounted = false;
         }
     };
-    return { ctx, registrations, sections, hooks };
+    const dispose = () => {
+        for (const disposer of disposers.splice(0).reverse()) disposer();
+    };
+    return { ctx, registrations, configured, errors, fiber, dispose };
+}
+
+/** Field name → compiled field type, read out of the compiled form surface. */
+function fieldTypes(config) {
+    const compiled = config.toJSON();
+    const refs = compiled.refs ?? {};
+    const root = Object.values(refs).find((entry) => entry && typeof entry.dict === "object" && entry.dict !== null);
+    assert.ok(root, "Config did not compile to a keyed shape");
+    return new Map(Object.entries(root.dict).map(([field, ref]) => [field, refs[ref] ?? {}]));
 }
 
 describe("plugin face", () => {
@@ -74,8 +106,8 @@ describe("plugin face", () => {
         assert.deepEqual([...inject], ["web"]);
     });
 
-    it("keeps the namespace and the provider id fixed", () => {
-        assert.equal(SETTINGS_NAMESPACE, "web-search-searxng");
+    it("keeps the row's entry id and the provider id fixed", () => {
+        assert.equal(ENTRY_ID, "web-search-searxng");
         assert.equal(SEARXNG_PROVIDER_ID, "searxng-local");
     });
 
@@ -90,13 +122,32 @@ describe("plugin face", () => {
         assert.equal(options.apiKey, undefined);
         assert.equal(options.apiKeyEnv, "SEARXNG_API_KEY");
     });
+});
 
-    it("defaults every config field in the schema", () => {
-        const resolved = Config({});
-        assert.equal(resolved.baseURL, SEARXNG_DEFAULT_BASE_URL);
-        assert.equal(resolved.maxResults, SEARXNG_DEFAULT_MAX_RESULTS);
-        assert.equal(resolved.language, "all");
-        assert.equal(resolved.apiKeyEnv, "SEARXNG_API_KEY");
+describe("the configuration form surface", () => {
+    it("declares every user-authored field, and only those", () => {
+        assert.deepEqual([...fieldTypes(Config).keys()].sort(), [...CONFIG_FIELDS].sort());
+    });
+
+    it("makes every field volatile, so the row page can edit it", () => {
+        for (const [field, type] of fieldTypes(Config)) {
+            assert.equal(type.meta?.volatile, true, `${field} must be .volatile()`);
+        }
+    });
+
+    it("keeps the key a secret and its reference a credential reference", () => {
+        const types = fieldTypes(Config);
+        assert.equal(types.get("apiKey").meta.role, "secret");
+        assert.equal(types.get("apiKeyEnv").meta.role, "credential-ref");
+    });
+
+    it("defaults only the credential reference, so blank fields reach the environment", () => {
+        const values = configSource(Config({}))();
+        assert.equal(values.apiKeyEnv, "SEARXNG_API_KEY");
+        assert.equal(values.baseURL, undefined);
+        assert.equal(values.maxResults, undefined);
+        assert.equal(values.language, undefined);
+        assert.equal(values.apiKey, undefined);
     });
 });
 
@@ -109,35 +160,54 @@ describe("apply()", () => {
         assert.equal(typeof registrations[0].available(), "boolean");
     });
 
-    it("installs the settings section under this plugin's namespace, with the row config as the base", () => {
-        const { ctx, sections } = fakeContext();
-        apply(ctx, { baseURL: "http://localhost:8090" });
-        assert.equal(sections.length, 1);
-        assert.equal(sections[0].ns, SETTINGS_NAMESPACE);
-        assert.deepEqual(sections[0].entry, { baseURL: "http://localhost:8090" });
+    it("keeps the generated page off for this fiber, once, until the instance leaves", () => {
+        const { ctx, configured, fiber, dispose } = fakeContext();
+        apply(ctx, {});
+        assert.equal(configured.length, 1);
+        assert.deepEqual(configured[0].presentation, { auto: false });
+        assert.equal(configured[0].owner, fiber);
+        dispose();
+        assert.equal(configured.length, 0, "the auto page comes back with the instance gone");
     });
 
-    it("reads the config source afresh per search", () => {
-        const { ctx, registrations, hooks } = fakeContext();
-        apply(ctx, { baseURL: "http://row.test" });
+    it("reads the live references afresh per search", () => {
+        const { ctx, registrations } = fakeContext();
+        const config = { baseURL: live("http://row.test"), maxResults: live(5) };
+        apply(ctx, config);
         const provider = registrations[0];
-        // The settings service handed back a live source; flipping it stands in
-        // for a GUI edit landing between searches. The provider must observe it,
-        // never a snapshot taken at registration.
-        hooks.setSource(() => ({ baseURL: "not a url", maxResults: 3 }));
+        assert.equal(provider.available(), true);
+        // A form commit moves the reference between searches; the provider must
+        // observe it, never a snapshot taken at registration.
+        config.baseURL.value = "not a url";
         assert.equal(provider.available(), false);
-        hooks.setSource(() => ({ baseURL: "http://second.test", maxResults: 7 }));
+        config.baseURL.value = "http://second.test";
+        config.maxResults.value = 7;
         assert.equal(provider.available(), true);
     });
 
-    it("keeps working with no settings service mounted", () => {
-        // No provider means the inject callback never fires: the source stays the
-        // row config, and the registration still happens.
+    it("reads a plain value composed by hand as itself", () => {
         const { ctx, registrations } = fakeContext();
-        ctx.withoutSettings();
+        apply(ctx, { baseURL: "not a url" });
+        assert.equal(registrations[0].available(), false);
+    });
+
+    it("keeps working with no settings service mounted", () => {
+        // No service means the inject callback never fires: the references keep
+        // answering the row, and the registration still happens.
+        const { ctx, registrations, configured } = fakeContext({}, { settings: false });
         apply(ctx, { baseURL: "http://localhost:8091" });
         assert.equal(registrations.length, 1);
         assert.equal(registrations[0].available(), true);
+        assert.equal(configured.length, 0);
+    });
+
+    it("says so once, and still searches, when it was not started as a profile entry", () => {
+        const { ctx, registrations, configured, errors } = fakeContext({}, { entryId: null });
+        apply(ctx, {});
+        assert.equal(errors.length, 1);
+        assert.match(errors[0], /not a profile entry/);
+        assert.equal(configured.length, 0, "no form to keep the page off for");
+        assert.equal(registrations.length, 1);
     });
 });
 

@@ -5,8 +5,8 @@
  * asking "where did this value come from?" has exactly one answer. The chain is
  * deliberately the same for every field:
  *
- *   1. the settings section as it currently stands (the user layer wins over the
- *      composed layers);
+ *   1. the row's configuration form as it currently stands (the user layer —
+ *      the profile patch — wins over the row's own config);
  *   2. the launcher environment's variable of the matching name;
  *   3. the constant in {@link ./constants.ts constants}.
  *
@@ -27,7 +27,7 @@ import {
     SEARXNG_MAX_RESULTS_ENV
 } from "./constants.js";
 import { apiKeyEnvName, resolveApiKey } from "./credentials.js";
-import type { Config } from "./schema.js";
+import type { ConfigValues } from "./schema.js";
 import { recordSearchRequest } from "./recorder.js";
 import type { PluginContext, SearxngSearchOptions } from "./types/index.js";
 
@@ -37,7 +37,7 @@ import type { PluginContext, SearxngSearchOptions } from "./types/index.js";
  * @param config - the config source as it stands right now (a fresh thunk result per search).
  * @returns the fully defaulted options for one search.
  */
-export function resolveOptions(ctx: PluginContext, config: Config): SearxngSearchOptions {
+export function resolveOptions(ctx: PluginContext, config: ConfigValues): SearxngSearchOptions {
     const environment = launchEnvironmentOf(ctx);
 
     return {
@@ -52,7 +52,7 @@ export function resolveOptions(ctx: PluginContext, config: Config): SearxngSearc
 }
 
 /** A literal key only counts when it is a non-empty string. */
-function literalApiKey(config: Config): string | undefined {
+function literalApiKey(config: ConfigValues): string | undefined {
     const key = config.apiKey;
     return typeof key === "string" && key.length > 0 ? key : undefined;
 }

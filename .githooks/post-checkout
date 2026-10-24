@@ -1,0 +1,552 @@
+#!/bin/sh
+#
+# post-checkout — sync package.json version when checking out a git-flow release branch.
+#
+# Detects branches:
+#   release/X.Y.Z
+# and sets:
+#   package.json -> "version": "X.Y.Z"
+#
+# If package-lock.json or npm-shrinkwrap.json exists, npm version also updates them.
+#
+# Variables opcionales:
+#   HOOK_NODE=/ruta/a/node
+#   HOOK_NPM=/ruta/a/npm
+#   GIT_HOOK_DEBUG=1
+#
+
+# ---------------------------------------------------------------------------
+# Setup
+# ---------------------------------------------------------------------------
+
+NODE_BIN=${HOOK_NODE:-node}
+NPM_BIN=${HOOK_NPM:-npm}
+
+# ---------------------------------------------------------------------------
+# Utilities
+# ---------------------------------------------------------------------------
+
+warn() {
+    printf '%s\n' "WARN post-checkout: $*" >&2
+}
+
+debug() {
+    [ "${GIT_HOOK_DEBUG:-0}" = "1" ] || return 0
+    printf '%s\n' "DEBUG post-checkout: $*" >&2
+}
+
+# ---------------------------------------------------------------------------
+# post-checkout receives:
+#
+# $1 = previous ref
+# $2 = new ref
+# $3 = 1 if the checkout switches branches
+#
+# ---------------------------------------------------------------------------
+
+[ "$3" = "1" ] || exit 0
+
+# ---------------------------------------------------------------------------
+# Get repository root
+# ---------------------------------------------------------------------------
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+debug "root=$root"
+
+# ---------------------------------------------------------------------------
+# Get current branch
+# ---------------------------------------------------------------------------
+
+branch=$(git -C "$root" symbolic-ref -q --short HEAD) || exit 0
+
+debug "branch=$branch"
+
+# ---------------------------------------------------------------------------
+# Locate Node (before any check that uses it)
+#
+# Sourcetree/Windows may not have node in the process PATH (e.g. node
+# installed only in WSL). HOOK_NODE allows specifying the installation.
+# ---------------------------------------------------------------------------
+
+command -v "$NODE_BIN" >/dev/null 2>&1 || {
+    warn "node not available in PATH (install Node on Windows or set HOOK_NODE)"
+    exit 1
+}
+
+debug "node=$(command -v "$NODE_BIN")"
+
+# ---------------------------------------------------------------------------
+# Only act on release/X.Y.Z
+#
+# Only three-component numeric SemVer is accepted:
+#
+#   0.1.0
+#   1.2.3
+#   10.20.30
+#
+# Leading zeros are not accepted:
+#
+#   01.2.3
+#   1.02.3
+# ---------------------------------------------------------------------------
+
+case "$branch" in
+    release/*)
+        version=${branch#release/}
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+debug "version-raw=[$version]"
+
+"$NODE_BIN" -e '
+const version = process.argv[1];
+
+if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version)) {
+    process.exit(1);
+}
+' "$version" >/dev/null 2>&1 || {
+    warn "release branch with invalid version: $branch"
+    exit 1
+}
+
+debug "version=$version"
+
+# ---------------------------------------------------------------------------
+# package.json
+# ---------------------------------------------------------------------------
+
+pkg="$root/package.json"
+
+[ -f "$pkg" ] || {
+    warn "package.json not found in $root"
+    exit 1
+}
+
+# ---------------------------------------------------------------------------
+# Read and validate package.json
+# ---------------------------------------------------------------------------
+
+current=$(
+    "$NODE_BIN" -e '
+const fs = require("fs");
+
+const path = process.argv[1];
+
+try {
+    const pkg = JSON.parse(fs.readFileSync(path, "utf8"));
+
+    if (typeof pkg.version !== "string") {
+        process.exit(2);
+    }
+
+    process.stdout.write(pkg.version);
+} catch {
+    process.exit(1);
+}
+' "$pkg" 2>/dev/null
+)
+rc=$?
+
+case "$rc" in
+    1)
+        warn "package.json does not contain valid JSON"
+        exit 1
+        ;;
+    2)
+        warn "package.json does not contain a valid version property"
+        exit 1
+        ;;
+esac
+
+debug "current-version=$current"
+
+# ---------------------------------------------------------------------------
+# Idempotency
+# ---------------------------------------------------------------------------
+
+[ "$current" = "$version" ] && {
+    debug "version already synced"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Update package.json + lockfiles
+#
+# We prefer npm version because it correctly understands the structure of
+# package.json/package-lock.json/npm-shrinkwrap.json.
+#
+# --ignore-scripts avoids executing project lifecycle scripts.
+# --no-git-tag-version avoids npm creating a tag.
+# --allow-same-version keeps the idempotent behavior.
+# ---------------------------------------------------------------------------
+
+if command -v "$NPM_BIN" >/dev/null 2>&1; then
+
+    debug "npm=$(command -v "$NPM_BIN")"
+    debug "updating version via npm"
+
+    out=$(
+        "$NPM_BIN" --prefix "$root" version "$version" \
+            --no-git-tag-version \
+            --allow-same-version \
+            --ignore-scripts \
+            2>&1
+    )
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        warn "npm version failed; $out"
+        exit 1
+    fi
+
+else
+
+    warn "npm not found; updating package.json directly"
+
+    # -----------------------------------------------------------------------
+    # Fallback without npm.
+    #
+    # We don't use JSON.stringify() to avoid reformatting the entire package.json.
+    # The script below locates exclusively the "version" property
+    # of the root object and replaces only its value, preserving:
+    #
+    # - indentation
+    # - whitespace
+    # - EOL
+    # - property order
+    # - rest of content
+    # -----------------------------------------------------------------------
+
+    "$NODE_BIN" - "$pkg" "$version" <<'NODE'
+const fs = require("fs");
+
+const path = process.argv[2];
+const version = process.argv[3];
+
+const src = fs.readFileSync(path, "utf8");
+
+let i = 0;
+let depth = 0;
+let versionStart = -1;
+let versionEnd = -1;
+
+function skipWhitespace() {
+    while (i < src.length && /\s/.test(src[i])) {
+        i++;
+    }
+}
+
+function skipString() {
+    if (src[i] !== '"') {
+        throw new Error("expected string");
+    }
+
+    i++;
+
+    while (i < src.length) {
+        if (src[i] === "\\") {
+            i += 2;
+            continue;
+        }
+
+        if (src[i] === '"') {
+            i++;
+            return;
+        }
+
+        i++;
+    }
+
+    throw new Error("unterminated string");
+}
+
+function skipValue() {
+    skipWhitespace();
+
+    if (src[i] === '"') {
+        skipString();
+        return;
+    }
+
+    if (src[i] === "{") {
+        let level = 0;
+
+        do {
+            if (src[i] === '"') {
+                skipString();
+                continue;
+            }
+
+            if (src[i] === "{") level++;
+            if (src[i] === "}") level--;
+
+            i++;
+        } while (i < src.length && level > 0);
+
+        return;
+    }
+
+    if (src[i] === "[") {
+        let level = 0;
+
+        do {
+            if (src[i] === '"') {
+                skipString();
+                continue;
+            }
+
+            if (src[i] === "[") level++;
+            if (src[i] === "]") level--;
+
+            i++;
+        } while (i < src.length && level > 0);
+
+        return;
+    }
+
+    while (
+        i < src.length &&
+        !",}]".includes(src[i])
+    ) {
+        i++;
+    }
+}
+
+try {
+    skipWhitespace();
+
+    if (src[i] !== "{") {
+        throw new Error("root JSON value is not an object");
+    }
+
+    depth = 1;
+    i++;
+
+    while (i < src.length && depth > 0) {
+        skipWhitespace();
+
+        if (src[i] === "}") {
+            depth--;
+            i++;
+            continue;
+        }
+
+        if (src[i] !== '"') {
+            throw new Error("invalid object");
+        }
+
+        const keyStart = i;
+        skipString();
+
+        const key = JSON.parse(src.slice(keyStart, i));
+
+        skipWhitespace();
+
+        if (src[i] !== ":") {
+            throw new Error("missing colon");
+        }
+
+        i++;
+        skipWhitespace();
+
+        if (depth === 1 && key === "version") {
+            if (src[i] !== '"') {
+                throw new Error("package.json version is not a string");
+            }
+
+            const valueStart = i;
+            skipString();
+
+            const oldValue = JSON.parse(src.slice(valueStart, i));
+
+            if (oldValue === version) {
+                process.exit(2);
+            }
+
+            versionStart = valueStart;
+            versionEnd = i;
+            break;
+        }
+
+        skipValue();
+
+        skipWhitespace();
+
+        if (src[i] === ",") {
+            i++;
+        }
+    }
+
+    if (versionStart === -1) {
+        throw new Error("top-level version property not found");
+    }
+
+    const replacement = JSON.stringify(version);
+
+    const result =
+        src.slice(0, versionStart) +
+        replacement +
+        src.slice(versionEnd);
+
+    fs.writeFileSync(path, result);
+
+} catch (error) {
+    console.error(error.message);
+    process.exit(1);
+}
+NODE
+
+    rc=$?
+
+    case "$rc" in
+        0)
+            ;;
+        2)
+            debug "version already synced"
+            exit 0
+            ;;
+        *)
+            warn "could not update package.json"
+            exit 1
+            ;;
+    esac
+
+fi
+
+# ---------------------------------------------------------------------------
+# Determine modified files that must be included in the commit.
+#
+# We use positional parameters as a POSIX-compatible array.
+# ---------------------------------------------------------------------------
+
+set -- package.json
+
+[ -f "$root/package-lock.json" ] &&
+    set -- "$@" package-lock.json
+
+[ -f "$root/npm-shrinkwrap.json" ] &&
+    set -- "$@" npm-shrinkwrap.json
+
+debug "files=$*"
+
+# ---------------------------------------------------------------------------
+# Check that files are actually modified.
+#
+# This avoids depending on the "nothing to commit" text, which may also vary
+# according to Git's language setting.
+# ---------------------------------------------------------------------------
+
+has_changes=0
+
+for file in "$@"; do
+    if ! git -C "$root" diff --quiet -- "$file" ||
+        ! git -C "$root" diff --cached --quiet -- "$file"; then
+        has_changes=1
+        break
+    fi
+done
+
+[ "$has_changes" -eq 0 ] && {
+    debug "no changes to commit"
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# Commit.
+#
+# Sourcetree may be running Git operations simultaneously, so we wait if
+# index.lock exists.
+#
+# We never delete index.lock: if it exists it belongs to another Git process.
+# ---------------------------------------------------------------------------
+
+i=0
+max_retries=3
+
+while [ "$i" -lt "$max_retries" ]; do
+
+    lock_exists=0
+
+    if (
+        cd "$root" &&
+        lock=$(git rev-parse --git-path index.lock 2>/dev/null) &&
+        [ -e "$lock" ]
+    ); then
+        lock_exists=1
+    fi
+
+    if [ "$lock_exists" -eq 1 ]; then
+        i=$((i + 1))
+        debug "index.lock presente; esperando ($i/$max_retries)"
+        sleep 1
+        continue
+    fi
+
+    debug "creating release commit"
+
+    git -C "$root" commit \
+        --only \
+        --no-verify \
+        -m "Bump package version to $version" \
+        -- "$@"
+
+    rc=$?
+
+    if [ "$rc" -eq 0 ]; then
+        debug "commit created successfully"
+        exit 0
+    fi
+
+    # -----------------------------------------------------------------------
+    # The commit may have failed due to a race with another Git process.
+    # We check for the lock again before deciding to retry.
+    # -----------------------------------------------------------------------
+
+    lock_exists=0
+
+    if (
+        cd "$root" &&
+        lock=$(git rev-parse --git-path index.lock 2>/dev/null) &&
+        [ -e "$lock" ]
+    ); then
+        lock_exists=1
+    fi
+
+    if [ "$lock_exists" -eq 1 ]; then
+        i=$((i + 1))
+        debug "index.lock created during commit; waiting ($i/$max_retries)"
+        sleep 1
+        continue
+    fi
+
+    # -----------------------------------------------------------------------
+    # There may have been an external change between the check and the commit.
+    # We verify again whether relevant differences still exist.
+    # -----------------------------------------------------------------------
+
+    has_changes=0
+
+    for file in "$@"; do
+        if ! git -C "$root" diff --quiet -- "$file" ||
+            ! git -C "$root" diff --cached --quiet -- "$file"; then
+            has_changes=1
+            break
+        fi
+    done
+
+    if [ "$has_changes" -eq 0 ]; then
+        debug "changes no longer present; no commit needed"
+        exit 0
+    fi
+
+    warn "commit failed"
+    exit 1
+
+done
+
+warn "commit failed after $max_retries attempts due to index.lock"
+exit 1

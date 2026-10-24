@@ -3,10 +3,6 @@
 # add`). This layer does BOTH activation steps so a fresh install needs nothing
 # else: it switches the web seam to this provider and mounts the plugin row.
 #
-# Configuration is environment-first: set $SEARXNG_BASE_URL / $SEARXNG_MAX_RESULTS
-# / $SEARXNG_LANGUAGE in your shell or an .env before launching `dsh`, and no
-# YAML editing is required. The values below are fallbacks when unset.
-#
 # A patch row REPLACES the targeted row's whole `config`, so this row restates
 # every key the base `web` row owns (fetchProvider: http) alongside the
 # search-provider switch.
@@ -15,10 +11,19 @@
     searchProvider: searxng-local
     fetchProvider: http
 
+# One profile entry row. `id: web-search-searxng` is not decoration — it is the
+# key every part of the configuration surface resolves by: the host form
+# attaches the entry by this row's id, and the browser reads and writes the
+# entry's configuration form through the very same id (dsh 0.2).
+#
+# Deliberately NO `config:` block. Since dsh 0.2 the row's `config:` is the
+# layer the Host answers as the configuration form's OWN base, so whatever is
+# declared here is what a later form write re-materialises as a user-layer
+# value — every field would come back Overridden after one unrelated save.
+# Configuration stays environment-first without it: a field the form leaves
+# blank resolves $SEARXNG_BASE_URL / $SEARXNG_MAX_RESULTS / $SEARXNG_LANGUAGE
+# from the launch environment for each search, then the built-in default
+# (see src/host/values.ts).
 - insert:
     - id: web-search-searxng
       name: '@comecaramelos/dsh-web-search-searxng'
-      config:
-        baseURL: !!js process.env.SEARXNG_BASE_URL ?? 'http://localhost:8080'
-        maxResults: !!js Number(process.env.SEARXNG_MAX_RESULTS ?? 10)
-        language: !!js process.env.SEARXNG_LANGUAGE ?? 'all'

@@ -1,7 +1,7 @@
 {
   "name": "@comecaramelos/dsh-web-search-searxng",
   "description": "SearXNG-backed search provider (local meta-search JSON API) for the DeepSeek Harness web capability seam (ctx.web)",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publishConfig": {
     "access": "public"
   },
@@ -56,23 +56,36 @@
     "url": "git+https://github.com/acdcgz/dsh-web-search-searxng.git"
   },
   "license": "MIT",
+  "engines": {
+    "dsh": "^0.2.0-0"
+  },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-agent": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-launch-environment": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-session": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-settings": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-web": "^0.1.2-rc.1"
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/dsh-agent": "^0.2.0-0",
+    "@deepseek-ai/dsh-credentials": "^0.2.0-0",
+    "@deepseek-ai/dsh-launch-environment": "^0.2.0-0",
+    "@deepseek-ai/dsh-session": "^0.2.0-0",
+    "@deepseek-ai/dsh-web": "^0.2.0-0"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "^3.18.1"
+    "@comecaramelos/dsh-ancesters": "^0.0.1",
+    "@deepseek-ai/schemastery": "^3.18.4"
   },
   "devDependencies": {
+    "@comecaramelos/dsh-ancesters": "^0.0.1",
+    "@deepseek-ai/cordis": "4.0.4",
+    "@deepseek-ai/dsh-agent": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-credentials": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-launch-environment": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-session": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-web": "0.2.0-rc.2",
     "@types/node": "^24.19.1",
     "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "esbuild": "^0.25.12",
     "postcss": "^8.5.29",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "typescript": "^5.9.3"
   },
   "allowScripts": {
@@ -87,6 +100,7 @@
       "inject": [
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-api-remotes"
       ]
     }

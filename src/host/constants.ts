@@ -11,8 +11,16 @@
 /** Stable provider id this plugin registers under in the web seam. */
 export const SEARXNG_PROVIDER_ID = "searxng-local";
 
-/** Namespace string the settings section installs under (branded in ./section.ts). */
-export const SETTINGS_NAMESPACE = "web-search-searxng";
+/**
+ * Profile entry id of the bundle row (`cordis.patch.yml`). Since dsh 0.2 the
+ * row's configuration form is keyed by this id, and the browser card reads and
+ * writes through the very same one; the host half reads it off its own loader
+ * entry rather than trusting this constant (see ./settings.ts).
+ */
+export const ENTRY_ID = "web-search-searxng";
+
+/** Every user-authored field of the row's configuration form. */
+export const CONFIG_FIELDS = ["apiKey", "apiKeyEnv", "baseURL", "maxResults", "language"] as const;
 
 /** Cordis plugin name, used by loader diagnostics (see ./plugin-meta.ts). */
 export const PLUGIN_NAME = "web-search-searxng";

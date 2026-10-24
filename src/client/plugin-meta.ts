@@ -1,31 +1,26 @@
 /**
- * Browser half — the plugin's identity and the services it asks the shell for.
+ * Browser half — the plugin's identity.
  *
- * `name` is what the loader's `window.__ModuleLoader__.load` registration carries
- * (the same id the Host serves the bundle under); `inject` is the list of
- * services the browser context hands `apply`. Nothing here computes anything, so
- * a reader can check the browser contract in one screen.
+ * The identifiers are contracts with the host half: the profile entry id keys
+ * this row's configuration form, the package id keys the bundle page the card
+ * stands on (`plugins.bundle.config`), and the
+ * locale namespace is the lookup root for every string this half renders. The
+ * browser half is emitted as its own bundle and cannot import
+ * ../host/constants.ts, so they are mirrored here — keep both sides in step.
  */
 
-/** The id this half registers with the loader's module table. */
+/** The id this half registers with the loader's module table — and the package
+ * half of the row key (this plugin is its own bundle). */
 export const PLUGIN_ID = "@comecaramelos/dsh-web-search-searxng";
 
-/** The namespace the card edits — and the key it registers its own cell under. */
-export const SETTINGS_NAMESPACE = "web-search-searxng";
+/** Profile entry id of the bundle row; the host half keys its form by it. */
+export const ENTRY_ID = "web-search-searxng";
 
-/**
- * The namespace the harness-shipped card registers under.
- *
- * The plugin-configuration tab builds its cell list from the registrations that
- * claim a key, without deduping, so a second registration claiming the same key
- * renders that cell twice. This half therefore claims that key with a
- * null-rendering tombstone (see `./card/tombstone.ts`) — the section keeps its
- * seat, the shipped card stops showing.
- */
-export const DEEPSEEK_SETTINGS_NAMESPACE = "web-search-deepseek";
-
-/** The locale namespace every string the card renders resolves through. */
+/** The locale namespace every string the page renders resolves through. */
 export const LOCALE_NAMESPACE = "web-search-searxng";
 
-/** Services the browser context injects, all answered by the running GUI. */
-export const inject = ["slots", "locale", "remote", "remote.credentials", "settingsScope"];
+/** The reference the key control addresses when the form states none. */
+export const DEFAULT_KEY_REF = "SEARXNG_API_KEY";
+
+/** The fields the page stages, in the order it renders them. */
+export const STAGED_FIELDS = ["baseURL", "maxResults", "language"] as const;
