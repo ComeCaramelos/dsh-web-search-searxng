@@ -14,6 +14,13 @@ JSON API (`GET /search?format=json`) into the harness's normalized
   The tool is exposed by `dsh-tool-web`; this package only feeds the seam.
 - Function/namespace plugin: `inject: ['web']`, `name: "web-search-searxng"`.
 - Each search = a single HTTP `GET` (no model cost).
+- Targets **dsh `^0.2.0`** (`engines.dsh: "^0.2.0-0"`, peers `^0.2.0-0`). The
+  dsh 0.2 configuration surface (row identity, the configuration form, the row
+  page) is consumed through **`@comecaramelos/dsh-ancesters`** (sibling checkout
+  `../dsh-ancesters`, linked as `file:` devDependency — not on npm). Never
+  re-implement what it owns here (form attach, auto-page off, controller, write
+  door, slot registration); a gap goes into ancesters as a typed
+  hole, not into this package.
 - Official subsystem documentation:
   <https://deepseek-harness.github.io/deepseek-harness/en/reference/subsystems/web>
 
@@ -45,10 +52,10 @@ src/index.ts             # Host surface: identity, constants, Config, apply, pro
 src/provider.ts          # ./provider entry: provider + mapping + constants, reusable without the plugin
 src/host/constants.ts    # IDs, defaults, env-var names, header constants
 src/host/plugin-meta.ts  # name + inject (the cordis face)
-src/host/schema.ts       # Config (schemastery) + the Config type
-src/host/settings.ts     # installSection: namespace + live `ConfigSource` thunk
-src/host/apply.ts        # apply(ctx, config): section source + provider registration
-src/host/values.ts       # resolveOptions: settings → env → constant
+src/host/schema.ts       # Config (schemastery, every field .volatile()) + Config / ConfigValues types
+src/host/settings.ts     # attachConfigForm (ancesters attachSettingsForm) + configSource thunk
+src/host/apply.ts        # apply(ctx, config): form attach + provider registration
+src/host/values.ts       # resolveOptions: form → env → constant
 src/host/credentials.ts  # apiKeyRef/apiKeyEnvName + the per-search key thunk
 src/host/recorder.ts     # the secret-free `web/searxng-search-request` session event
 src/host/request.ts      # buildSearchRequest: URL + headers
@@ -56,18 +63,17 @@ src/host/provider.ts     # SearxngSearchProvider
 src/host/mapping.ts      # mapSearxngResult / mapSearxngResponse
 src/host/abort.ts        # abort helpers, all normalized to WEB_ABORTED
 src/host/types/          # shared type sections (config / search / services)
-src/client/index.ts      # browser surface: apply + inject
-src/client/apply.ts      # browser wiring: styles, locale, scope, controller, slots
-src/client/plugin-meta.ts# plugin id, namespace(s), inject list
-src/client/controller/   # form.ts (staged form), fields.ts (specs), state.ts, index.ts
-src/client/card/         # index.ts (card), fields.ts (ValueField/SecretField), tombstone.ts
+src/client/index.ts      # browser surface: mountSettingsCard descriptor, apply + inject, key wiring
+src/client/plugin-meta.ts# plugin id, entry id, locale namespace, staged fields
+src/client/controller/   # fields.ts (parse specs), credentials.ts (KeyController over remote.credentials)
+src/client/card/         # body.ts (the one block: projection, save plan, page body), fields.ts (ValueField/SecretField)
 src/client/styles/       # SearxngCard.module.css + one-shot injection + css-modules.d.ts
-src/client/locales/      # en-US / zh-CN dictionaries
+src/client/locales/      # en / zh dictionaries (files en-US.ts / zh-CN.ts)
 src/client/shell-modules.d.ts  # structural views for the two seeded client modules
 test/provider.test.mjs   # provider behavior; stubs globalThis.fetch
-test/client.test.mjs     # evaluates the emitted lib/client.js in a simulated module loader
-test/wiring.test.mjs     # host apply(), settings projection, option precedence
-scripts/build-client.mjs # esbuild bundler + CSS-modules plugin for the browser half
+test/client.test.mjs     # evaluates the emitted lib/client.js (real React) against fake configForms/slots/credentials
+test/wiring.test.mjs     # host apply(), compiled form surface, live config source, option precedence
+scripts/build-client.mjs # esbuild bundler + CSS-modules plugin + ancesters client/source alias
 tsconfig.json            # host emit (src/index|provider|host/** → lib/)
 src/client/tsconfig.json # browser typecheck (noEmit)
 cordis.patch.yml         # Bundle layer (dsh.bundle.patch): activates plugin + switches searchProvider
@@ -78,33 +84,47 @@ types/client.d.ts        # hand-maintained types for the emitted bundle (lib/cli
 and mapping, reusable without the plugin), and `./client` (the browser bundle,
 declared by `dsh.client` so the Host serves it at
 `/plugins/.../client.js`). The harness packages are `peerDependencies`
-(resolved against the user's profile); the only own dependency is
-`@deepseek-ai/schemastery`. TypeScript, esbuild and postcss are devDependencies
-(build only, never shipped).
+(resolved against the user's profile); the own dependencies are
+`@comecaramelos/dsh-ancesters` and `@deepseek-ai/schemastery`. TypeScript,
+esbuild, postcss, React (client test only) and the dsh packages pinned to one
+0.2 release train (`0.2.0-rc.2`, so the prerelease peers resolve consistently)
+are devDependencies (build/test only, never shipped).
 
 ## Architecture (understand before touching code)
 
 ### Registration flow (`src/host/apply.ts`)
 
-`apply(ctx, config)`:
-1. `installSection(ctx, config, (source) => { current = source; })`
-   (`src/host/settings.ts`) — it waits for the optional `settings` service
-   through `ctx.inject(["settings"], …)` and calls
-   `settingsCtx.settings.installSection(ctx, "web-search-searxng", Config, config, …)`.
-   The section is **projected per call** via the `current` thunk: a settings
-   change takes effect on the *next* search without re-registering the provider.
-2. `ctx.web.registerSearchProvider(new SearxngSearchProvider(() => resolveOptions(ctx, current())))`.
+Since dsh 0.2 there is no settings namespace (`installSection` is gone): the
+row config **is** the configuration form. Every `Config` field is
+`.volatile()` — an entry with no volatile field answers no form at all, and a
+write naming a non-volatile field is refused — so `apply` receives live
+references, keyed by the row's profile entry id (`web-search-searxng`).
 
-With no settings provider mounted the inject callback never fires and `current`
-stays the row config — the plugin keeps running exactly as composed. This is the
-same idiom the harness's own `dsh-web-search-deepseek` provider uses; do not
-declare `settings` in the plugin's own `inject` (that would make an optional
-dependency mandatory).
+`apply(ctx, config)`:
+1. `attachConfigForm(ctx)` (`src/host/settings.ts`) — ancesters'
+   `attachSettingsForm` with `userFields: CONFIG_FIELDS`, `liveKeys: []`. It
+   reads the entry id off `ctx.fiber.entry.options.id` (a bare mount logs once
+   and keeps searching), waits for the optional `settings` service through
+   `ctx.inject(["settings"], …)`, and keeps the generated page off with one
+   disposable `settings.configure({ auto: false }, fiber)` — the card is the page.
+2. `ctx.web.registerSearchProvider(new SearxngSearchProvider(() => resolveOptions(ctx, configSource(config)())))`
+   — `configSource` reads every live reference (`readVolatile`, which also
+   accepts plain values composed by hand) **per search**, so a form commit takes
+   effect on the *next* search without re-registering the provider. Never
+   capture a value in `apply`.
+
+With no settings service mounted the inject callback never fires and the
+references keep answering the row — the plugin keeps running exactly as
+composed. Same idiom as the harness's own `dsh-web-search-deepseek` 0.2
+(`config.x.get()` per search); do not declare `settings` in the plugin's own
+`inject` (that would make an optional dependency mandatory).
 
 ### Option resolution (`resolveOptions`)
 
-Priority: **settings → env var → constant**. The provider never sees missing
-values (everything arrives fully defaulted).
+Priority: **form → env var → constant**. The provider never sees missing
+values (everything arrives fully defaulted). `baseURL`, `maxResults` and
+`language` carry **no schema default** on purpose: a schema default would answer
+before the environment and hide `SEARXNG_*` for good.
 
 | Option | Env var | Default |
 |---|---|---|
@@ -179,50 +199,60 @@ package. `available()` must stay a **local, network-free** check
   for remote instances it is adjusted on the server, not here.
 - **Secrets**: `apiKey` carries `role('secret')` and must never ride a
   `describe()`. Prefer `apiKeyEnv` + `ctx.credentials` over literals. The
-  browser card follows suit: the key control is write-only (blank = keep),
-  writes through the credentials domain addressed by `apiKeyEnv`, and re-reads
-  on `credentials/reference-updated`.
+  browser page follows suit: the key control is write-only (blank = keep),
+  is staged in its own `KeyController` (never in the ancesters controller — a
+  staged `apiKey` would be written into the profile patch by `applyStaged`),
+  writes through `remote.credentials` addressed by the form's `apiKeyEnv`, and
+  re-reads on `credentials/reference-updated`.
 - **Client bundle edges**: the emitted `lib/client.js` may only *require*
   platform seed words (the runtime module table cannot answer anything else; a
   require that misses the table fails the plugin's loader entry at import). The
   source half keeps that contract by importing nothing but those ids
-  (`src/client/**` imports the two `dsh-client-*` faces through
-  `src/client/shell-modules.d.ts`, described not installed) and by the
-  `external` list in `scripts/build-client.mjs`. Cross-plugin collaboration goes
-  through
-  cordis services (`ctx.settingsScope`, `ctx.slots`, `ctx.locale`,
-  `ctx.remote`); the card owns its chrome and staging — do not import
-  `dsh-client-ui-settings-plugins` values.
-- **The card takes the shipped card's seat**: the configurable-plugins tab
-  builds its cell list from the keys of entries registered into
-  `settings.plugin.item` (∩ the namespaces the Host serves) WITHOUT deduping,
-  so any second entry claiming the `web-search-deepseek` key with a visible
-  component renders that cell twice. The bundle therefore registers a
-  **null-rendering tombstone** under the `web-search-deepseek` key at
-  priority -1 (keyed dispatch renders the lowest priority; the shipped card
-  registers at 0), leaving the DeepSeek section its seat but no card, and
-  registers the card itself — which keeps the shipped card's shape (its
-  disclosure header, its fields, its staged-save footer), names its copy after
-  SearXNG, and draws them with the modern card sheet the sibling cards share
-  (`dsh-chrome-mcp`, `dsh-docker-desktop-mcp`, `dsh-hover-information`:
-  16px hairline shell, two-row `.field`, filled 32px input, outline buttons) —
-  and edits ONLY the `web-search-searxng` namespace — under its own
-  `web-search-searxng` key, rendered whenever the section is available. Dropping the tombstone re-surfaces the shipped DeepSeek card
-  next to the SearXNG one; dropping the card entry leaves the section with
-  no card at all. The DeepSeek provider itself stays untouched (still
-  selectable via `web.config.searchProvider`). Do NOT port per-request
-  search-budget fields from other providers into the SearXNG section (e.g.
-  `maxUses`): SearXNG's search API has no such parameter, so it would be a
-  dead setting the provider never reads.
-- `cordis.patch.yml` uses `!!js process.env.X ?? default` to stay
-  environment-first; keep that pattern when adding options.
+  (`src/client/**` imports the `dsh-client-store` face through
+  `src/client/shell-modules.d.ts`, described not installed) plus
+  `@comecaramelos/dsh-ancesters/client`, which `scripts/build-client.mjs`
+  aliases to its plain-ESM `client/source` and bundles in (it requires only the
+  same seed words). Cross-plugin collaboration goes through cordis services
+  (`ctx.configForms`, `ctx.slots`, `ctx.locale`, `ctx.remote`).
+- **The card stands on the bundle's own page** (dsh 0.2, same as
+  `dsh-hover-information`): `placement: "bundle"` makes ancesters register it
+  into `plugins.bundle.config` keyed by the package name
+  (`@comecaramelos/dsh-web-search-searxng` — this plugin is its own bundle, so
+  no `bundleId`). Clicking the plugin in the Plugins list opens the form
+  directly, like the built-in Web search entry; the `web-search-searxng`
+  component row still lists below it, with no configure link. That page asks
+  for the `page` shape only (no `renderSummary`: the line under the title is the
+  package description). The Plugins page draws the container (crumb, title,
+  description); the body draws only fields and the Save/Discard footer — no card
+  shell, no disclosure header. `placement` is new in ancesters (Unreleased).
+  The shipped DeepSeek "Web search" page is a separate official `plugins.item`
+  entry (id `web-search`), so the 0.1 tombstone over `settings.plugin.item` is
+  gone and must not come back: nothing here collides with it any more. Do NOT
+  port per-request search-budget fields from other providers (e.g. `maxUses`):
+  SearXNG's search API has no such parameter, so it would be a dead setting.
+- **No `config:` on the bundle row** in `cordis.patch.yml`: under dsh 0.2 the
+  row's `config:` is the form's base layer, and whatever it declares comes back
+  as a user-layer value (an Overridden badge) after one unrelated save. The old
+  `!!js process.env.X ?? default` pattern is therefore gone; the environment
+  fallback lives in `resolveOptions` instead. Keep new options that way.
+- **Locale ids**: dictionaries register under `en` / `zh` only — dsh never reads
+  `en-US`. The plugin's keys merge over ancesters' shared namespace and win.
 - Do not add `content` to the result or `truncated: true`: the seam owns both.
 
 ## Installation (debugging context)
 
-- Source bundle (debug mount): `dsh plugin --profile plugin-dev add link:/home/roberto/dev/dsh/dsh-web-search-searxng`
-  (links this checkout as a profile layer and switches `web.config.searchProvider: searxng-local`).
-  Local sources mount only in `plugin-dev` — the live `web` profile consumes the
-  bundled/npm version, never this checkout.
-- Manual: symlink in `$DSH_HOME/profiles/node_modules/@deepseek-ai/` + entry in
+- Source bundle (debug mount), from a WSL **login** shell (`bash -l`, so dsh
+  spawns the Linux `pnpm`):
+  `dsh plugin --profile plugin-dev add @comecaramelos/dsh-web-search-searxng@link:/home/roberto/dev/dsh/dsh-web-search-searxng`
+  — name the package before `link:`; a bare `link:<dir>` is keyed by the folder
+  name and dsh then cannot resolve the bundle (the add is rolled back). Then
+  enable the bundle (Plugins page, or `dsh.profile.bundles`); its patch switches
+  `web.config.searchProvider: searxng-local`. Local sources mount only in
+  `plugin-dev` — the live `web` profile consumes the bundled/npm version, never
+  this checkout.
+- Smoke test without touching real profiles: point `DSH_HOME` at a throwaway
+  WSL-native directory (not `/mnt/c` — pnpm symlinks break there), create a
+  profile with `--from-default-profile web`, add as above, then
+  `dsh <profile> --dump-config` and `dsh <profile> --no-open`.
+- Manual: symlink in `$DSH_HOME/profiles/node_modules/@comecaramelos/` + entry in
   the profile's `cordis.patch.yml` (see README).

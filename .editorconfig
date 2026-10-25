@@ -8,6 +8,11 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
+# Git hooks must stay LF on every platform: CRLF breaks the shebang and
+# taints shell assignments (e.g. `version=...` gains a trailing CR).
+[.githooks/*]
+end_of_line = lf
+
 [*.md]
 trim_trailing_whitespace = false
 

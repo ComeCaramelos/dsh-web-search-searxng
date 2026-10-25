@@ -4,7 +4,7 @@
 # browser bundle for the client half — and `.editorconfig` already pins
 # `end_of_line = lf`. Nothing here is meant to be platform-dependent: every
 # tracked file is stored *and* checked out as LF, so the working tree stays
-# byte-stable regardless of who cloned it, and a stray CRLF cannot silently
+# byte-stable regardless of who clones it, and a stray CRLF cannot silently
 # reappear through a checkout.
 * text=auto eol=lf
 
@@ -12,12 +12,17 @@
 # added later can never be classified by content sniffing alone.
 *.ts   text eol=lf
 *.d.ts text eol=lf
+*.css  text eol=lf
 *.mjs  text eol=lf
 *.cjs  text eol=lf
 *.json text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
 *.md   text eol=lf
+
+# Git hooks must stay LF on every platform: a CRLF shebang is not executable,
+# and a trailing CR taints shell assignments (e.g. `version=...`).
+.githooks/* text eol=lf
 
 # Repository metadata.
 .gitattributes text eol=lf

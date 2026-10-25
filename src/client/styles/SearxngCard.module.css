@@ -1,122 +1,32 @@
 /*
- * The card's stylesheet — authored as a CSS Module, the same form every shipped
- * `dsh-client-ui-*` half carries. The build step (scripts/build-client.mjs)
+ * The row page's stylesheet — authored as a CSS Module, the same form every
+ * shipped `dsh-client-ui-*` half carries. The build step (scripts/build-client.mjs)
  * parses it with postcss — a syntax error fails `build:client` at the exact
  * line — minifies it through esbuild's CSS pipeline, and scopes every class
- * name to `<hash>_<local>`; the card imports that map (default export) keyed by
+ * name to `<hash>_<local>`; the body imports that map (default export) keyed by
  * the local names below.
  *
- * All colors and surfaces come from the shell's design aliases, so the card
+ * All colors and surfaces come from the shell's design aliases, so the page
  * re-themes with the GUI instead of shipping a palette of its own.
  *
- * The shared half of this sheet is kept **byte-for-byte identical to the sibling
- * cards'** — `dsh-docker-desktop-mcp`'s `DockerMcpCard.module.css`,
- * `dsh-chrome-mcp`'s `ChromeMcpCard.module.css`, and the block layout
- * `dsh-hover-information` spells out in `styles/card.ts` when it styles its own
- * sheet inline: the card shell, the disclosure header and its title row, the
- * one-column body whose own rule IS the separator, the two-row field and its
- * copy lines all carry the same rules in the same order, so this card reads as
- * part of one component set instead of an older card that never caught up. The
- * second block carries what belongs to this plugin — the `unsaved` pill, the
- * "Reset to default" action, the field state pills, the save-error line and the
- * Save/Discard footer the staged form needs. Those rules are new only by name:
- * each one is a rule the references already carry under their own name (the pill
- * inside `dsh-hover-information`'s `nameRow`, the `linkButton` every card uses
- * for a bare action, the `catalogInput` row box, the `dialogButton` /
- * `dialogButtonPrimary` pair of a confirm footer), so a restyle lands on this
- * card from the same sheet and nothing here needs its own opinion about the
- * design system.
+ * Since dsh 0.2 the Plugins page owns the container: the crumb, the title, the
+ * description and the section the body sits in. So there is no card shell, no
+ * disclosure header and no chevron here any more — only what the body itself
+ * draws. The field rules are kept identical to the sibling cards'
+ * (`dsh-docker-desktop-mcp`, `dsh-chrome-mcp`, `dsh-hover-information`): the
+ * two-row field and its copy lines carry the same rules in the same order, so
+ * this page reads as part of one component set. The second block carries what
+ * belongs to this plugin — the "Reset to default" action, the field state
+ * pills, the save-error line and the Save/Discard footer the staged form needs.
  */
 
 /* ── shared with the sibling cards ──────────────────────────────────────── */
 
-.card {
-    border: 0.5px solid var(--dsw-alias-border-l4);
-    background: var(--dsw-alias-bg-layer-3);
-    border-radius: 16px;
-    list-style: none;
-    transition: border-color 0.16s, background 0.16s;
-}
-
-.card:hover {
-    border-color: var(--dsw-alias-label-dimmed);
-}
-
-.cardOpen {
-    background: var(--dsw-alias-bg-layer-2);
-    border-color: var(--dsw-alias-label-dimmed);
-}
-
-.header {
-    appearance: none;
-    width: 100%;
-    font: inherit;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    background: 0 0;
-    border: 0;
-    border-radius: 12px;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 16px;
-    display: flex;
-}
-
-.header:focus-visible {
-    outline: 2px solid var(--dsw-alias-brand-primary);
-    outline-offset: -2px;
-}
-
-.headText {
-    flex-direction: column;
-    flex: 1;
-    gap: 4px;
-    min-width: 0;
-    display: flex;
-}
-
-/* First line: the title, with the card's own state pill riding next to it. */
-.nameRow {
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-    display: flex;
-}
-
-.name {
-    color: var(--dsw-alias-label-primary);
-    font-size: 15px;
-    font-weight: 600;
-    line-height: 1.4;
-}
-
-.desc {
-    color: var(--dsw-alias-label-tertiary);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.chevron {
-    color: var(--dsw-alias-label-tertiary);
-    flex: none;
-    transition: transform 0.16s;
-}
-
-.chevronOpen {
-    transform: rotate(180deg);
-}
-
-/* One column of fields, spaced by the gap. The body's own top rule IS the
- * separator, so no field ever draws a second hairline between itself and its
- * neighbour — the same seam rule every sibling card follows. */
+/* One column of fields, spaced by the gap. */
 .body {
-    border-top: 0.5px solid var(--dsw-alias-border-l2);
     display: flex;
     flex-direction: column;
     gap: 10px;
-    margin: 0 16px;
-    padding: 12px 0;
 }
 
 /* Two-row field: title + controls inline above, description full-width below.
@@ -168,10 +78,8 @@
 
 /* ── this plugin's own parts, drawn from the same primitives ────────────── */
 
-/* The card's own state, drawn in the title row: a form with edits no save has
- * written back. It takes the pill `dsh-hover-information` carries inside its
- * `nameRow` (an outlined caption pill, not the older filled one), so the header
- * reads as a title plus one state mark — the shape every card carries. */
+/* A field's state mark (`Overridden`, a configured key): the outlined caption
+ * pill `dsh-hover-information` carries, not the older filled one. */
 .badge {
     white-space: nowrap;
     color: var(--dsw-alias-label-secondary);

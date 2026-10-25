@@ -21,7 +21,7 @@ import type { CredentialProvider, CredentialRef } from "@deepseek-ai/dsh-credent
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
 import { launchEnvironmentOf } from "@deepseek-ai/dsh-launch-environment";
 import { DEFAULT_API_KEY_ENV } from "./constants.js";
-import type { Config } from "./schema.js";
+import type { ConfigValues } from "./schema.js";
 import type { PluginContext } from "./types/index.js";
 
 /**
@@ -30,13 +30,13 @@ import type { PluginContext } from "./types/index.js";
  * A section that states no reference still points somewhere stable, so the GUI's
  * key control and the host's resolution never disagree about the address.
  */
-export function apiKeyEnvName(config: Config | undefined): string {
+export function apiKeyEnvName(config: ConfigValues | undefined): string {
     const declared = config?.apiKeyEnv;
     return typeof declared === "string" && declared.length > 0 ? declared : DEFAULT_API_KEY_ENV;
 }
 
 /** The same reference, branded for the credentials seam. */
-export function apiKeyRef(config: Config | undefined): CredentialRef {
+export function apiKeyRef(config: ConfigValues | undefined): CredentialRef {
     return credentialRef(apiKeyEnvName(config));
 }
 
@@ -46,7 +46,7 @@ export function apiKeyRef(config: Config | undefined): CredentialRef {
  * @param config - the config source as it stands now.
  * @returns a thunk resolving the key, or `undefined` when this instance is keyless.
  */
-export function resolveApiKey(ctx: PluginContext, config: Config | undefined): () => Promise<string | undefined> {
+export function resolveApiKey(ctx: PluginContext, config: ConfigValues | undefined): () => Promise<string | undefined> {
     const ref = apiKeyRef(config);
     return async () => {
         // `strict: false`: a composition may mount no credentials domain at all,

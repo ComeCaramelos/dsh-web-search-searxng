@@ -1,6 +1,6 @@
 /**
- * Browser half of the SearXNG search provider — the Web-search settings card the
- * Web GUI renders under Settings → Plugins → Plugin configuration.
+ * Browser half of the SearXNG search provider — the configuration page of this
+ * bundle's `web-search-searxng` row on the Web UI's Plugins page (dsh 0.2).
  *
  * The artifact is `lib/client.js`: a classic script in the DSH client module
  * system's lazy-CJS factory format (it registers
@@ -9,86 +9,95 @@
  * `/plugins/@comecaramelos/dsh-web-search-searxng/client.js` because
  * `package.json` declares `dsh.client`.
  *
- * The card keeps the look of the "Web search" card the harness ships for the
- * `web-search-deepseek` namespace, with its texts naming the SearXNG provider it
- * edits, and edits ONLY the `web-search-searxng` namespace. It registers into the
- * shared `settings.plugin.item` slot twice:
+ * The page is built from `@comecaramelos/dsh-ancesters`' `mountSettingsCard`
+ * (bundled into the same file): it registers once, into the Plugins page's
+ * `plugins.bundle.config` slot under `@comecaramelos/dsh-web-search-searxng`
+ * (the bundle's own page, the one the Plugins list opens), and edits the
+ * `web-search-searxng` row's configuration form (`configForms.get("web-search-searxng")`) — staged
+ * `baseURL` / `maxResults` / `language` drafts written on Save. The API key never
+ * rides the form: it is written through `remote.credentials`, addressed by the
+ * form's `apiKeyEnv`.
  *
- * - under the `web-search-deepseek` key at priority -1, a null-rendering
- *   tombstone shadowing the shipped card (a keyed slot renders its lowest
- *   priority first), so the DeepSeek section keeps its seat but shows no card;
- * - under the `web-search-searxng` key, the card itself, rendered whenever the
- *   section is available.
- *
- * The tab dispatches a key only when the Host serves its namespace, so a
- * deployment missing this plugin shows no trace of the card either way. The
- * DeepSeek provider behind that section is untouched and stays selectable
- * through `web.config.searchProvider`.
- *
- * Source layout behind the emitted bundle: `src/client/index.ts` is the surface,
- * `apply.ts` the wiring, `controller/` the live card, `card/` the widgets,
- * `styles/` the stylesheet and `locales/` the dictionaries.
+ * Source layout behind the emitted bundle: `src/client/index.ts` is the surface
+ * and the descriptor, `card/body.ts` the one block, `controller/` the field
+ * parsing and the key controller, `styles/` the stylesheet and `locales/` the
+ * dictionaries.
  *
  * @module @comecaramelos/dsh-web-search-searxng/client
  */
-import type { Context } from "@deepseek-ai/cordis";
 
-/** Required services (cordis fiber inject). */
-export declare const inject: string[];
-
-/** One field as a card control renders it. */
-export interface SearxngCardFieldState {
-    /** Draft text the control renders. */
-    text: string;
-    /** Whether saving would leave a user-layer entry for this field. */
-    overridden: boolean;
-    /** Whether the draft is not a value this field accepts (blocks saving). */
-    invalid: boolean;
-}
-
-/** What the SearXNG web-search card renders. */
-export interface SearxngCardState {
-    /** False while the namespace is not served; the card renders nothing. */
-    available: boolean;
-    /** Whether the Host document accepts writes. */
-    writable: boolean;
-    /** Whether the form holds edits a save would write. */
-    dirty: boolean;
-    /** Whether any staged draft is invalid (blocks the save). */
-    invalid: boolean;
-    /** Whether a save is crossing the wire. */
-    saving: boolean;
-    /** Whether the last save did not land as staged. */
-    failed: boolean;
-    baseURL: SearxngCardFieldState;
-    maxResults: SearxngCardFieldState;
-    language: SearxngCardFieldState;
-    /** The staged credential, blank until typed. */
-    apiKey: SearxngCardFieldState;
-    /** Whether the Host reports a configured credential for the referenced key. */
-    apiKeyConfigured: boolean;
-    /** Whether the credentials domain accepts a write for it. */
-    apiKeyWritable: boolean;
-}
-
-/** The registration-side face both slot entries inject (one shared store). */
-export interface SearxngCardFace {
-    /** The card's snapshot store, injected as the `webSearchCard` hook. */
-    hooks: {
-        webSearchCard: unknown;
-    };
-    /** Stage the draft text for one field. */
-    edit: (field: string, text: string) => void;
-    /** Stage a clear, so saving lets the field re-inherit the composition layer. */
-    resetField: (field: string) => void;
-    /** Write every staged edit, then re-seed from what the Host accepted. */
-    onSave: () => void;
-    /** Drop every staged edit. */
-    onDiscard: () => void;
-}
+/** Required services (cordis fiber inject): the card's own set plus `remote.credentials`. */
+export declare const inject: readonly string[];
 
 /**
- * Mount the SearXNG web-search card into the plugin configuration tab.
+ * Mount the configuration card on the bundle's page.
  * @param ctx - the browser plugin context.
  */
-export declare function apply(ctx: Context): void;
+export declare function apply(ctx: unknown): void;
+
+/** What the API key control renders. Never holds a stored secret. */
+export interface SearxngKeyState {
+    /** The credential reference the control addresses. */
+    ref: string;
+    /** Whether the Host reports a key configured for it. */
+    configured: boolean;
+    /** Whether the credentials domain would accept a write for it. */
+    writable: boolean;
+    /** The staged key text; blank until typed. */
+    draft: string;
+    /** Whether a key write is crossing the wire. */
+    saving: boolean;
+    /** Whether the last key write did not land. */
+    failed: boolean;
+}
+
+/** The key controller behind the API key control (test surface). */
+export interface SearxngKeyController {
+    getSnapshot(): SearxngKeyState;
+    edit(text: string): void;
+    discard(): void;
+    dirty(): boolean;
+    save(): Promise<boolean>;
+    refresh(): Promise<void>;
+    announce(ref: string): void;
+}
+
+/** One field as its control renders it. */
+export interface SearxngFieldView {
+    /** Text the control shows: the draft, else the served value, else blank. */
+    text: string;
+    /** Whether the user layer carries this field (draws Overridden + reset). */
+    overridden: boolean;
+    /** Whether the draft is not a value this field accepts (blocks the save). */
+    invalid: boolean;
+}
+
+/** Everything the page body renders. */
+export interface SearxngBodyView {
+    writable: boolean;
+    dirty: boolean;
+    invalid: boolean;
+    saving: boolean;
+    failed: boolean;
+    fields: Record<"baseURL" | "maxResults" | "language", SearxngFieldView>;
+    key: SearxngKeyState;
+}
+
+/** One planned step of a save. */
+export type SearxngSaveStep =
+    | { field: string; kind: "set"; value: string | number }
+    | { field: string; kind: "reset" }
+    | { field: string; kind: "drop" };
+
+/** The key controller `apply` built for `ctx` (test surface; the loader ignores it). */
+export declare function keyControllerOf(ctx: object): SearxngKeyController | undefined;
+/** Stage typed text for one field (a draft equal to what is served is dropped). */
+export declare function editField(controller: unknown, field: string, text: string): void;
+/** What a save would do, or `undefined` while a draft does not parse. */
+export declare function planSave(controller: unknown): SearxngSaveStep[] | undefined;
+/** The page body's view off the card snapshot and the key state. */
+export declare function projectBody(snapshot: unknown, key: SearxngKeyState): SearxngBodyView;
+/** Write every staged edit; reports whether all of it landed. */
+export declare function saveCard(controller: unknown, keys: SearxngKeyController): Promise<boolean>;
+/** Drop every draft without writing anything. */
+export declare function discardCard(controller: unknown, keys: SearxngKeyController): void;

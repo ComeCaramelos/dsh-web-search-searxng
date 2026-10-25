@@ -10,18 +10,23 @@
  * It is a provider, not a tool: the tool the model actually calls is the
  * harness's own `dsh-tool-web`; this package only feeds the seam. Selecting it
  * instead of the shipped provider is a seam config (`web.config.searchProvider`,
- * see the bundled `cordis.patch.yml`), and the Web GUI's plugin card edits this
- * provider's settings namespace (see `./client`).
+ * see the bundled `cordis.patch.yml`), and the configuration card on the
+ * bundle's Plugins page edits this row's own configuration form (see `./client`).
  *
- * Option precedence is fixed: settings user layer → launch environment variable
+ * Since dsh 0.2 the row config *is* that form: every field is `.volatile()`,
+ * keyed by the row's profile entry id, and attached through
+ * `@comecaramelos/dsh-ancesters` — the shared layer that absorbs the dsh 0.2
+ * surface so a dsh change is fixed in one place.
+ *
+ * Option precedence is fixed: configuration form → launch environment variable
  * → constant. Every field arrives fully defaulted, so a row that states nothing
  * still drives a complete search against a local keyless SearXNG.
  *
  * Everything behind this surface lives in `./host/*`:
  *
- *   ./host/apply.ts       the wiring (section + provider)
- *   ./host/settings.ts    the namespace install + the live config source
- *   ./host/values.ts      precedence resolution: settings → env → constants
+ *   ./host/apply.ts       the wiring (form attach + provider)
+ *   ./host/settings.ts    the form attach + the live config source
+ *   ./host/values.ts      precedence resolution: form → env → constants
  *   ./host/credentials.ts the per-search API-key resolution
  *   ./host/recorder.ts    the secret-free session event for the request
  *   ./host/request.ts     the URL + headers one search dispatches with
@@ -54,11 +59,13 @@ export {
     SEARXNG_LANGUAGE_ENV,
     SEARXNG_MAX_RESULTS_ENV,
     SEARXNG_PROVIDER_ID,
-    SETTINGS_NAMESPACE
+    CONFIG_FIELDS,
+    ENTRY_ID
 } from "./host/constants.js";
 
-// ── the row config schema, and the namespace the GUI edits ─────────────────
+// ── the row config schema (also the configuration form the GUI edits) ──────
 export { Config } from "./host/schema.js";
+export { configSource } from "./host/settings.js";
 
 // ── the wiring ──────────────────────────────────────────────────────────────
 export { apply } from "./host/apply.js";
@@ -73,5 +80,6 @@ export { searchAborted, throwIfSearchAborted } from "./host/abort.js";
 export { resolveOptions } from "./host/values.js";
 
 // ── types ───────────────────────────────────────────────────────────────────
+export type { ConfigValues } from "./host/schema.js";
 export type { SearxngSearchOptions, SearxngSearchRequestRecord } from "./host/types/search.js";
 export type { SearxngResponseBody, SearxngResponseEntry } from "./host/mapping.js";

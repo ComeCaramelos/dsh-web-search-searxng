@@ -1,19 +1,19 @@
 /**
- * Browser half — the two field controls the card renders.
+ * Browser half — the two field controls the page body renders.
  *
  * Both follow the layout the sibling cards carry (`dsh-docker-desktop-mcp`,
  * `dsh-chrome-mcp`, `dsh-hover-information`): a two-row field — the title and
  * whatever sits beside it in the inline `.fieldRow`, the value control on its own
  * line, one copy line beneath — and differ only in what the state pill says and
  * whether the value can be read back. Splitting them out keeps
- * `../card/index.ts` about layout rather than markup, and the same copy line
+ * `./body.ts` about layout rather than markup, and the same copy line
  * renders either as a hint or as the reason a save is blocked (the reference's
  * one `.fieldDesc`, recolored rather than swapped).
  */
 import { jsx, jsxs } from "react/jsx-runtime";
 import STYLES from "../styles/SearxngCard.module.css";
 
-/** A text or numeric field the section can serve back. */
+/** A text or numeric field the configuration form can serve back. */
 export function ValueField(props: any): any {
     return jsxs("div", {
         className: STYLES.field,
