@@ -1,7 +1,7 @@
 {
   "name": "@comecaramelos/dsh-web-search-searxng",
   "description": "SearXNG-backed search provider (local meta-search JSON API) for the DeepSeek Harness web capability seam (ctx.web)",
-  "version": "0.6.0",
+  "version": "0.0.1",
   "publishConfig": {
     "access": "public"
   },
